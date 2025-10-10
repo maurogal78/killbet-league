@@ -17,6 +17,20 @@ import streamlit.components.v1 as components
 import os
 import pickle
 
+st.set_page_config(page_title="KillBet League 2025-2026", layout="wide")
+
+st.markdown(
+    """
+    <style>
+    body, [class*="css"]  {
+        background-color: #000000 !important;
+        color: white !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # -------------------- Percorsi file di salvataggio --------------------
 # Tutti i file vengono ora salvati e caricati nella sottocartella "data"
 DATA_DIR = "data"
@@ -118,7 +132,7 @@ if "stake_value" not in st.session_state:
 # Variabile globale usata da tutti i calcoli
 STAKE = float(st.session_state["stake_value"])
 CASSA_START = 46.83      # cassa iniziale
-ADMIN_PIN = "1234"
+ADMIN_PIN = "ET28"
 
 # Colori nomi
 NAME_COLORS = {
