@@ -17,19 +17,48 @@ import streamlit.components.v1 as components
 import os
 import pickle
 
+# -------------------- Tema scuro universale (PC + smartphone) --------------------
 st.set_page_config(page_title="KillBet League 2025-2026", layout="wide")
 
-st.markdown(
-    """
+# Forza immediatamente lo sfondo nero prima del rendering Streamlit
+st.html("""
+<!DOCTYPE html>
+<html style="background-color: #000000; height: 100%;">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-    body, [class*="css"]  {
-        background-color: #000000 !important;
-        color: white !important;
-    }
+        html, body {
+            background-color: #000000 !important;
+            color: white !important;
+            height: 100%;
+            margin: 0;
+        }
+        h1, h2, h3, h4, h5, h6, p, div, span, label {
+            color: white !important;
+        }
+        .stApp, [class*="css"]  {
+            background-color: #000000 !important;
+            color: white !important;
+        }
+        .stDataFrame, .stTable, table, td, th {
+            color: white !important;
+            background-color: #111111 !important;
+        }
+        header {visibility: hidden;}
+        footer {visibility: hidden;}
+        MainMenu {visibility: hidden;}
     </style>
-    """,
-    unsafe_allow_html=True
-)
+</head>
+<body>
+<script>
+    // Imposta sfondo nero immediato anche su Safari mobile
+    document.documentElement.style.backgroundColor = "#000000";
+    document.body.style.backgroundColor = "#000000";
+</script>
+</body>
+</html>
+""")
+
 
 # -------------------- Percorsi file di salvataggio --------------------
 # Tutti i file vengono ora salvati e caricati nella sottocartella "data"
