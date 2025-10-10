@@ -17,41 +17,19 @@ import streamlit.components.v1 as components
 import os
 import pickle
 
-# -------------------- Tema scuro definitivo --------------------
 st.set_page_config(page_title="KillBet League 2025-2026", layout="wide")
 
-# Mantiene grafici, tabelle e testi in dark mode completo
-st.markdown("""
+st.markdown(
+    """
     <style>
-        html, body, [class*="css"]  {
-            background-color: #000000 !important;
-            color: white !important;
-        }
-        h1, h2, h3, h4, h5, h6, p, div, span, label {
-            color: white !important;
-        }
-        .stDataFrame, .stTable, table, td, th {
-            color: white !important;
-            background-color: #111111 !important;
-        }
-        .stApp {
-            background-color: #000000 !important;
-        }
-        header {visibility: hidden;}
-        footer {visibility: hidden;}
-        MainMenu {visibility: hidden;}
+    body, [class*="css"]  {
+        background-color: #000000 !important;
+        color: white !important;
+    }
     </style>
-""", unsafe_allow_html=True)
-
-# Mini-trucco per ridurre il flash bianco su mobile
-import streamlit.components.v1 as components
-components.html("""
-<script>
-    document.documentElement.style.backgroundColor = "#000000";
-    document.body.style.backgroundColor = "#000000";
-</script>
-""", height=0)
-
+    """,
+    unsafe_allow_html=True
+)
 
 # -------------------- Percorsi file di salvataggio --------------------
 # Tutti i file vengono ora salvati e caricati nella sottocartella "data"
@@ -154,7 +132,7 @@ if "stake_value" not in st.session_state:
 # Variabile globale usata da tutti i calcoli
 STAKE = float(st.session_state["stake_value"])
 CASSA_START = 46.83      # cassa iniziale
-ADMIN_PIN = "ET28"
+ADMIN_PIN = "1234"
 
 # Colori nomi
 NAME_COLORS = {
