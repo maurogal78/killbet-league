@@ -17,47 +17,40 @@ import streamlit.components.v1 as components
 import os
 import pickle
 
-# -------------------- Tema scuro universale (PC + smartphone) --------------------
+# -------------------- Tema scuro definitivo --------------------
 st.set_page_config(page_title="KillBet League 2025-2026", layout="wide")
 
-# Forza immediatamente lo sfondo nero prima del rendering Streamlit
-st.html("""
-<!DOCTYPE html>
-<html style="background-color: #000000; height: 100%;">
-<head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+# Mantiene grafici, tabelle e testi in dark mode completo
+st.markdown("""
     <style>
-        html, body {
+        html, body, [class*="css"]  {
             background-color: #000000 !important;
             color: white !important;
-            height: 100%;
-            margin: 0;
         }
         h1, h2, h3, h4, h5, h6, p, div, span, label {
-            color: white !important;
-        }
-        .stApp, [class*="css"]  {
-            background-color: #000000 !important;
             color: white !important;
         }
         .stDataFrame, .stTable, table, td, th {
             color: white !important;
             background-color: #111111 !important;
         }
+        .stApp {
+            background-color: #000000 !important;
+        }
         header {visibility: hidden;}
         footer {visibility: hidden;}
         MainMenu {visibility: hidden;}
     </style>
-</head>
-<body>
+""", unsafe_allow_html=True)
+
+# Mini-trucco per ridurre il flash bianco su mobile
+import streamlit.components.v1 as components
+components.html("""
 <script>
-    // Imposta sfondo nero immediato anche su Safari mobile
     document.documentElement.style.backgroundColor = "#000000";
     document.body.style.backgroundColor = "#000000";
 </script>
-</body>
-</html>
-""")
+""", height=0)
 
 
 # -------------------- Percorsi file di salvataggio --------------------
