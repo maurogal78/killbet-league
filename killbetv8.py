@@ -17,19 +17,39 @@ import streamlit.components.v1 as components
 import os
 import pickle
 
+# ===================== TEMA DARK FISSO (PC + SMARTPHONE) =====================
 st.set_page_config(page_title="KillBet League 2025-2026", layout="wide")
 
-st.markdown(
-    """
+# Tema dark coerente con il look da PC (nero + grigio scuro)
+st.markdown("""
     <style>
-    body, [class*="css"]  {
-        background-color: #000000 !important;
-        color: white !important;
-    }
+        html, body, [class*="css"] {
+            background-color: #000000 !important;
+            color: white !important;
+        }
+        .stApp {
+            background-color: #000000 !important;
+        }
+        section[data-testid="stSidebar"] {
+            background-color: #111111 !important;
+        }
+        .stDataFrame div[data-testid="stDataFrame"] {
+            background-color: #111111 !important;
+            color: white !important;
+        }
+        [data-testid="stTable"] {
+            background-color: #111111 !important;
+            color: white !important;
+        }
+        h1, h2, h3, h4, h5, h6, p, div, span, label {
+            color: white !important;
+        }
+        header, footer, MainMenu {visibility: hidden;}
     </style>
-    """,
-    unsafe_allow_html=True
-)
+""", unsafe_allow_html=True)
+# ============================================================================
+
+
 
 # -------------------- Percorsi file di salvataggio --------------------
 # Tutti i file vengono ora salvati e caricati nella sottocartella "data"
