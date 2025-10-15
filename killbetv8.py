@@ -132,7 +132,7 @@ if "stake_value" not in st.session_state:
 # Variabile globale usata da tutti i calcoli
 STAKE = float(st.session_state["stake_value"])
 CASSA_START = 46.83      # cassa iniziale
-ADMIN_PIN = "1234"
+ADMIN_PIN = "ET2856"
 
 # Colori nomi
 NAME_COLORS = {
@@ -2575,6 +2575,19 @@ for p in PLAYERS:
 
 df_fili_rank = pd.DataFrame(det_rows).sort_values("Saldo", ascending=False).reset_index(drop=True)
 
+# Convertiamo "Quota giornata" in numerico per forzare l'allineamento automatico a destra
+if "Quota giornata" in df_fili_rank.columns:
+    df_fili_rank["Quota giornata"] = (
+        df_fili_rank["Quota giornata"]
+        .astype(str)
+        .str.replace(",", ".", regex=False)
+        .apply(lambda x: float(x) if x.replace('.', '', 1).isdigit() else None)
+    )
+
+    # Manteniamo l'ordine visivo delle colonne
+    df_fili_rank = df_fili_rank[["GIOCATORE", "Saldo", "Δ giornata", "Quota giornata"]]
+
+
 def paint_fili_compact(df_in):
     # colonne numeriche/di contenuto da centrare
     cols_nums = ["Saldo", "Quota giornata", "Δ giornata"]
@@ -2591,6 +2604,10 @@ def paint_fili_compact(df_in):
 
     # proprietà per le colonne numeriche: centratura e colore
     sty = sty.set_properties(**{"text-align": "center"}, subset=cols_nums)
+        # Sposta leggermente a destra solo la colonna "Quota giornata"
+    if "Quota giornata" in df_in.columns:
+        sty = sty.set_properties(subset=["Quota giornata"], **{"text-align": "right", "padding-right": "10px"})
+
     sty = sty.set_properties(**{"color": "#ffffff"}, subset=cols_nums)
 
     # dimensioni/celle fisse (opzionale ma aiuta la leggibilità)
@@ -2606,9 +2623,41 @@ def paint_fili_compact(df_in):
 
     return sty
 
+# Allinea a destra solo la colonna "Quota giornata" nel widget st.dataframe
+st.markdown(
+    """
+    <style>
+    /* Trova la colonna Quota giornata (4ª colonna) e allinea i valori a destra */
+    [data-testid="stDataFrame"] div[role="gridcell"][aria-colindex="4"],
+    [data-testid="stDataFrame"] div[role="columnheader"][aria-colindex="4"] {
+        justify-content: flex-end !important;
+        text-align: right !important;
+        padding-right: 14px !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-st.dataframe(paint_fili_compact(df_fili_rank).format({"Saldo":fmt1,"Δ giornata":fmt1}),
-            hide_index=True, use_container_width=True)
+# Funzione di formattazione sicura per evitare errori con celle None o vuote
+def safe_fmt(x):
+    try:
+        return f"{x:.2f}" if pd.notnull(x) else ""
+    except Exception:
+        return ""
+
+st.dataframe(
+    paint_fili_compact(
+        df_fili_rank.round({"Quota giornata": 2})  # Arrotonda solo la colonna visiva
+    ).format({
+        "Saldo": fmt1,
+        "Δ giornata": fmt1,
+        "Quota giornata": safe_fmt,  # <-- usa formattazione sicura
+    }),
+    hide_index=True,
+    use_container_width=True
+)
+
 
                     # Grafico Filippoide
 try:
