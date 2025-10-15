@@ -1,8 +1,7 @@
 # 🏆 KillBet League 2025-2026
 
 KillBet League è un progetto personale sviluppato da **Mauro Galante** per la gestione e la visualizzazione dei risultati di una lega privata di scommesse sportive tra amici. A parte si gioca online su piattaforme di scommesse sportive, ognuno sceglie una partita, con una quota e poi in base agli esiti della gara ci saranno Vincenti o Perdenti.   
-Il software, scritto in **Python**, calcola automaticamente punteggi, bonus e malus, generando grafici di classifica e tabelle interattive per ogni giornata di gioco. Lo scopo del gioco è divertirsi con le prese per in giro per i sorpassi in classifica.
-
+Il software, scritto in **Python**, calcola automaticamente punteggi, bonus e malus, generando grafici di classifica e tabelle interattive per ogni giornata di gioco. Lo scopo del gioco è quello di divertirsi tra amici cercando di arrivare primi in classifica.
 ---
 
 ## ⚙️ Funzionalità principali
