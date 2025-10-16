@@ -19,7 +19,7 @@ import pickle
 
 st.set_page_config(page_title="KillBet League 2025-2026", layout="wide")
 
-# ===== DEVICE & ORIENTATION DETECTION (compatibile Streamlit) =====
+# ===== DEVICE & ORIENTATION DETECTION (versione aggiornata compatibile) =====
 import time
 import streamlit.components.v1 as components
 
@@ -29,33 +29,42 @@ if "screen_h" not in st.session_state: st.session_state.screen_h = None
 if "device"   not in st.session_state: st.session_state.device   = "desktop"
 if "view"     not in st.session_state: st.session_state.view     = "home"   # per mobile/tablet
 
-# JS per leggere larghezza/altezza
+# Script JS per inviare la dimensione reale al backend
 components.html(
     """
     <script>
-    const sendSize = () => {
-    const msg = {type: "SCREEN_SIZE", w: window.innerWidth, h: window.innerHeight};
-    const streamlitDoc = window.parent || window;
-    streamlitDoc.postMessage(msg, "*");
-    };
-    window.addEventListener("load", sendSize);
-    window.addEventListener("resize", sendSize);
+    function reportSize() {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        const params = new URLSearchParams(window.location.search);
+        params.set("w", w);
+        params.set("h", h);
+        const newUrl = window.location.pathname + "?" + params.toString();
+        window.history.replaceState({}, "", newUrl);
+        window.parent.postMessage({type: "resize", w, h}, "*");
+    }
+    window.addEventListener("load", reportSize);
+    window.addEventListener("resize", reportSize);
     </script>
     """,
     height=0,
 )
 
-# Placeholder tecnico
-_ = st.query_params
+# Lettura dai query params (più affidabile di postMessage)
+params = st.query_params
 try:
-    if not st.session_state.screen_w or not st.session_state.screen_h:
-        time.sleep(0.05)
+    w = int(params.get("w", [0])[0])
+    h = int(params.get("h", [0])[0])
 except Exception:
-    pass
+    w, h = 1200, 800
 
-# Heuristics fallback
-w = st.session_state.screen_w or 1200
-h = st.session_state.screen_h or 800
+if w and h:
+    st.session_state.screen_w = w
+    st.session_state.screen_h = h
+else:
+    # fallback in caso di mancata lettura
+    w = st.session_state.screen_w or 1200
+    h = st.session_state.screen_h or 800
 
 # Classificazione dispositivo
 if w < 700:
@@ -65,7 +74,7 @@ elif w < 1024:
 else:
     device = "desktop"
 
-# Tablet orizzontale = desktop
+# Tablet in orizzontale = desktop
 if device == "tablet" and w > h:
     device = "desktop"
 
@@ -77,6 +86,7 @@ if st.session_state.device == "mobile" and w < h:
     if st.button("Aggiorna"):
         st.rerun()
     st.stop()
+
 
 # ===== MENU ICONICO (mobile/tablet) =====
 menu_mobile = [
