@@ -19,143 +19,6 @@ import pickle
 
 st.set_page_config(page_title="KillBet League 2025-2026", layout="wide")
 
-# ===== DEVICE & ORIENTATION DETECTION (funziona su mobile/tablet Streamlit 1.39+) =====
-import streamlit.components.v1 as components
-
-# Stato iniziale
-if "device" not in st.session_state: st.session_state.device = "desktop"
-if "view" not in st.session_state: st.session_state.view = "home"
-
-# Script JavaScript per mandare dimensioni reali al backend
-components.html(
-    """
-    <script>
-    function sendSize() {
-        const w = window.innerWidth;
-        const h = window.innerHeight;
-        const params = new URLSearchParams(window.location.search);
-        params.set("width", w);
-        params.set("height", h);
-        const newUrl = window.location.pathname + "?" + params.toString();
-        window.history.replaceState({}, "", newUrl);
-    }
-    window.addEventListener("load", sendSize);
-    window.addEventListener("resize", sendSize);
-    </script>
-    """,
-    height=0,
-)
-
-# Lettura diretta dai query params
-q = st.query_params
-w = int(q.get("width", [1200])[0])
-h = int(q.get("height", [800])[0])
-
-# Classificazione dispositivo
-if w < 700:
-    device = "mobile"
-elif w < 1024:
-    device = "tablet"
-else:
-    device = "desktop"
-
-# Tablet orizzontale = desktop
-if device == "tablet" and w > h:
-    device = "desktop"
-
-st.session_state.device = device
-
-# Avviso per mobile in verticale
-if st.session_state.device == "mobile" and w < h:
-    st.warning("🔁 Ruota il telefono in orizzontale per vedere bene grafici e tabelle.")
-    if st.button("Aggiorna"):
-        st.rerun()
-    st.stop()
-
-
-
-# ===== MENU ICONICO (mobile/tablet) =====
-menu_mobile = [
-    {"label": "📊 Filippoide",        "view": "filippoide"},
-    {"label": "🐔 Polli & Volpi",     "view": "polli_volpi"},
-    {"label": "🏆 Killbet Arena",     "view": "classifica"},
-    {"label": "📅 Giornate",          "view": "giornate"},
-    {"label": "💰 Movimenti Cassa",   "view": "movimenti"},
-    {"label": "ℹ️ Legenda",           "view": "legenda"},
-]
-
-def torna_home():
-    st.session_state.view = "home"
-    st.rerun()
-
-
-
-
-def mostra_filipp():
-    # Qui incolleremo più avanti il PANNELLO 1: FILIPPOIDE
-    pass
-
-
-
-def mostra_polli_volpi():
-    # ==================== PANNELLO 2: POLLI & VOLPI ====================
-    st.markdown("<div class='panel'>", unsafe_allow_html=True)
-    st.markdown("### 🐔 Polli + Danno")
-
-    df_polli_view = df_polli.copy()
-    if "POLLI" in df_polli_view.columns and "DANNO" in df_polli_view.columns:
-        try:
-            df_polli_view["DANNO_num"] = (
-                df_polli_view["DANNO"]
-                .astype(str)
-                .str.extract(r"([\d,\.]+)")[0]
-                .str.replace(",", ".", regex=False)
-                .astype(float)
-                .fillna(0)
-            )
-            df_polli_view = (
-                df_polli_view.sort_values(
-                    by=["POLLI", "DANNO_num"],
-                    ascending=[False, False],
-                    kind="mergesort"
-                )
-                .drop(columns=["DANNO_num"])
-                .reset_index(drop=True)
-            )
-        except Exception as e:
-            st.warning(f"Impossibile ordinare Polli+Danno: {e}")
-    else:
-        df_polli_view = df_polli.copy()
-
-    st.dataframe(
-        paint_names_only(df_polli_view).set_properties(
-            subset=["POLLI"], **{"min-width": "60px", "width": "60px", "max-width": "60px", "text-align": "center"}
-        ).set_properties(
-            subset=["DANNO"], **{"min-width": "160px", "width": "160px", "max-width": "160px", "text-align": "center"}
-        ),
-        hide_index=True,
-        use_container_width=True
-    )
-
-    st.markdown("### 🦊 Volpi")
-    df_volpi_view = (
-        df_volpi.copy()
-        .sort_values("VOLPI", ascending=False, kind="mergesort")
-        .reset_index(drop=True)
-    )
-    st.dataframe(
-        paint_names_only(df_volpi_view).set_properties(
-            subset=["VOLPI"], **{"min-width": "60px", "width": "60px", "max-width": "60px", "text-align": "center"}
-        ),
-        hide_index=True,
-        use_container_width=True
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
-
-
-
-
-
 st.markdown(
     """
     <style>
@@ -269,7 +132,7 @@ if "stake_value" not in st.session_state:
 # Variabile globale usata da tutti i calcoli
 STAKE = float(st.session_state["stake_value"])
 CASSA_START = 46.83      # cassa iniziale
-ADMIN_PIN = "ET2856"
+ADMIN_PIN = "1234"
 
 # Colori nomi
 NAME_COLORS = {
@@ -1016,7 +879,7 @@ def compute_all(df, fino_a=None, ricariche=None, cashouts=None):
         df = df.copy()
         df["fantasmino"] = False
 
-    # per grafico Killbet Arena (progressione per giornata)
+    # per grafico classifica generale (progressione per giornata)
     per_day_points = {p:[] for p in PLAYERS}
     per_day_totals = {p:0.0 for p in PLAYERS}
     
@@ -1383,7 +1246,7 @@ def compute_all(df, fino_a=None, ricariche=None, cashouts=None):
                         ("hen_ghost", pts_adj, f"Pollo Fantasma — {why} (−1 rispetto al Pollo)")
                     )
 
-        # punti di giornata per grafico Killbet Arena (inclusi extra/malus)
+        # punti di giornata per grafico classifica generale (inclusi extra/malus)
         daily_add = {p: 0.0 for p in PLAYERS}
 
         # 1) punti base dalle partite
@@ -1408,7 +1271,7 @@ def compute_all(df, fino_a=None, ricariche=None, cashouts=None):
             per_day_points[p].append(per_day_totals[p])
 
 
-    # Killbet Arena
+    # Classifica generale
     # Ricalcolo robusto dei malus Fantasmino direttamente dal DF filtrato (fino_a)
     if "fantasmino" in df.columns:
         _gp = (
@@ -1639,11 +1502,11 @@ def compute_all(df, fino_a=None, ricariche=None, cashouts=None):
     
     for p in PLAYERS: df_fili[p]=cum[p]
 
-    # Serie Killbet Arena per grafico (con Fantasmino incluso)
+    # Serie classifica generale per grafico (con Fantasmino incluso)
     df_gen = pd.DataFrame({"Giornata": list(range(1, max_len + 1))})
     for p in PLAYERS: df_fili[p]=cum[p]
 
-    # Serie Killbet Arena per grafico (malus Fantasmino già incluso negli extra → no doppio conteggio)
+    # Serie classifica generale per grafico (malus Fantasmino già incluso negli extra → no doppio conteggio)
     df_gen = pd.DataFrame({"Giornata": list(range(1, max_len + 1))})
     for p in PLAYERS:
         vals = []
@@ -1659,7 +1522,7 @@ def compute_all(df, fino_a=None, ricariche=None, cashouts=None):
 
         df_gen[p] = vals
 
-    # Arrotondo i valori della Killbet Arena a 2 decimali
+    # Arrotondo i valori della classifica generale a 2 decimali
     df_gen = df_gen.round(2)
 
 
@@ -2712,19 +2575,6 @@ for p in PLAYERS:
 
 df_fili_rank = pd.DataFrame(det_rows).sort_values("Saldo", ascending=False).reset_index(drop=True)
 
-# Convertiamo "Quota giornata" in numerico per forzare l'allineamento automatico a destra
-if "Quota giornata" in df_fili_rank.columns:
-    df_fili_rank["Quota giornata"] = (
-        df_fili_rank["Quota giornata"]
-        .astype(str)
-        .str.replace(",", ".", regex=False)
-        .apply(lambda x: float(x) if x.replace('.', '', 1).isdigit() else None)
-    )
-
-    # Manteniamo l'ordine visivo delle colonne
-    df_fili_rank = df_fili_rank[["GIOCATORE", "Saldo", "Δ giornata", "Quota giornata"]]
-
-
 def paint_fili_compact(df_in):
     # colonne numeriche/di contenuto da centrare
     cols_nums = ["Saldo", "Quota giornata", "Δ giornata"]
@@ -2741,10 +2591,6 @@ def paint_fili_compact(df_in):
 
     # proprietà per le colonne numeriche: centratura e colore
     sty = sty.set_properties(**{"text-align": "center"}, subset=cols_nums)
-        # Sposta leggermente a destra solo la colonna "Quota giornata"
-    if "Quota giornata" in df_in.columns:
-        sty = sty.set_properties(subset=["Quota giornata"], **{"text-align": "right", "padding-right": "10px"})
-
     sty = sty.set_properties(**{"color": "#ffffff"}, subset=cols_nums)
 
     # dimensioni/celle fisse (opzionale ma aiuta la leggibilità)
@@ -2760,41 +2606,9 @@ def paint_fili_compact(df_in):
 
     return sty
 
-# Allinea a destra solo la colonna "Quota giornata" nel widget st.dataframe
-st.markdown(
-    """
-    <style>
-    /* Trova la colonna Quota giornata (4ª colonna) e allinea i valori a destra */
-    [data-testid="stDataFrame"] div[role="gridcell"][aria-colindex="4"],
-    [data-testid="stDataFrame"] div[role="columnheader"][aria-colindex="4"] {
-        justify-content: flex-end !important;
-        text-align: right !important;
-        padding-right: 14px !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
 
-# Funzione di formattazione sicura per evitare errori con celle None o vuote
-def safe_fmt(x):
-    try:
-        return f"{x:.2f}" if pd.notnull(x) else ""
-    except Exception:
-        return ""
-
-st.dataframe(
-    paint_fili_compact(
-        df_fili_rank.round({"Quota giornata": 2})  # Arrotonda solo la colonna visiva
-    ).format({
-        "Saldo": fmt1,
-        "Δ giornata": fmt1,
-        "Quota giornata": safe_fmt,  # <-- usa formattazione sicura
-    }),
-    hide_index=True,
-    use_container_width=True
-)
-
+st.dataframe(paint_fili_compact(df_fili_rank).format({"Saldo":fmt1,"Δ giornata":fmt1}),
+            hide_index=True, use_container_width=True)
 
                     # Grafico Filippoide
 try:
@@ -2880,10 +2694,10 @@ st.dataframe(
 st.markdown("</div>", unsafe_allow_html=True)
 
 
-# ==================== PANNELLO 3: Killbet Arena + LEGENDA + CALENDARIO ====================
+# ==================== PANNELLO 3: CLASSIFICA GENERALE + LEGENDA + CALENDARIO ====================
 
 st.markdown("<div class='panel'>", unsafe_allow_html=True)
-st.markdown("### 🏆 Killbet Arena")
+st.markdown("### 🏆 Classifica generale")
 cols = [
     "GIOCATORE", "Totale", "Punti base",
     "Penalità quote basse",
@@ -2912,7 +2726,7 @@ st.dataframe(
     use_container_width=True
 )
 
-                        # Grafico Killbet Arena
+                        # Grafico classifica generale
 try:
     if not df_gen.empty:
         df_gen_cut = df_gen[df_gen["Giornata"] <= fino_a].copy()
@@ -2929,7 +2743,7 @@ try:
         # Linee semi-trasparenti
         ch_lines = alt.Chart(long).mark_line(opacity=0.85).encode(
             x=alt.X('Giornata:O', sort=None),
-            y=alt.Y('Punti:Q', title='Killbet Arena (progressione)',
+            y=alt.Y('Punti:Q', title='Classifica generale (progressione)',
                 scale=alt.Scale(zero=False, nice=True)),
             color=alt.Color(
                 'Giocatore:N',
@@ -2955,7 +2769,7 @@ try:
             filled=True, size=40, strokeWidth=1
         ).encode(
             x='Giornata:O',
-            y=alt.Y('Punti:Q', title='Killbet Arena (progressione)',
+            y=alt.Y('Punti:Q', title='Classifica generale (progressione)',
                 scale=alt.Scale(zero=False, nice=True)),
             color=alt.Color(
                 'Giocatore:N',
@@ -3153,7 +2967,7 @@ def giornata_card_html(g, subdf):
                     df.loc[df["giocatore"] == pl, "bonus_allwin"] = (
                         df.get("bonus_allwin", 0) + bonus_val
                     )
-                    # Aggiorna la Killbet Arena mantenendo la progressione
+                    # Aggiorna la classifica generale mantenendo la progressione
                     df_gen.loc[df_gen["Giornata"] == g, pl] = prev_pts + bonus_val
 
         except Exception as e:
@@ -3687,29 +3501,3 @@ else:
     st.markdown("#### 📒 Movimenti cassa")
     st.caption("Nessun movimento ancora registrato.")
 st.markdown("</div>", unsafe_allow_html=True)
-
-# ===== ROUTER =====
-device = st.session_state.device
-
-if device == "desktop":
-    mostra_filipp()
-    mostra_polli_volpi()
-else:
-    if st.session_state.view == "home":
-        st.markdown("## 🎯 Scegli una sezione")
-        cols = st.columns(3)
-        for i, item in enumerate(menu_mobile):
-            with cols[i % 3]:
-                if st.button(item["label"], key=f"btn_{i}", use_container_width=True):
-                    st.session_state.view = item["view"]
-                    st.rerun()
-
-    elif st.session_state.view == "filippoide":
-        st.button("🔙 Torna alla Home", on_click=torna_home, use_container_width=True)
-        mostra_filipp()
-
-    elif st.session_state.view == "polli_volpi":
-        st.button("🔙 Torna alla Home", on_click=torna_home, use_container_width=True)
-        mostra_polli_volpi()
-
-
