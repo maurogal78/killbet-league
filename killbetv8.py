@@ -1,5 +1,4 @@
-# KILL Bet365 League 2025-2026 — FULL APP (appv4.py)
-# Include:
+# KILL Bet365 League 2025-2026 — 
 # - Legenda solo "Punti"
 # - Scheda POLLO con "Danno" (prodotto 5 quote × stake)
 # - Ricariche: numero (7, 7.5) o data "gg/mm/aa", etichette RG… in grafico e tabella
@@ -17,21 +16,1211 @@ import streamlit.components.v1 as components
 import os
 import pickle
 
+# ==================== INIZIALIZZAZIONE OGGETTI GLOBALI ====================
+
+# Crea il contenitore per le celebrazioni se non esiste ancora
+if "celebration_box" not in st.session_state:
+    st.session_state["celebration_box"] = st.empty()
+    
+# Inizializza anche altri stati comuni, per evitare errori in caso di primo avvio
+if "giornata_flag" not in st.session_state:
+    st.session_state["giornata_flag"] = {}
+if "cashouts" not in st.session_state:
+    st.session_state["cashouts"] = {}
+if "ricariche" not in st.session_state:
+    st.session_state["ricariche"] = {}
+if "fino_a" not in st.session_state:
+    st.session_state["fino_a"] = 1
+
 st.set_page_config(page_title="KillBet League 2025-2026", layout="wide")
 
-st.markdown(
-    """
+# ===== DEVICE & ORIENTATION DETECTION (versione universale e sicura) =====
+import streamlit as st
+
+# Manteniamo sempre le stesse variabili di stato
+if "view" not in st.session_state:
+    st.session_state.view = "home"
+
+# === Protezione anti-reset per slider ===
+if "fino_a" in st.session_state:
+    st.session_state.setdefault("slider_fino_a", st.session_state["fino_a"])
+
+# Imposta manualmente l'aspetto
+device = "unified"
+st.session_state.device = device
+
+st.caption("💡 Suggerimento: se sei su smartphone, ruota lo schermo in orizzontale per vedere meglio i grafici.")
+
+
+
+# ===== MENU ICONICO (ordine definitivo e nomi finali) =====
+
+menu_mobile = [
+    {"label": "📊 Filippoide",        "view": "filippoide"},
+    {"label": "🏆 Killbet Arena",     "view": "classifica"},
+    {"label": "📅 Giornate",          "view": "giornate"},
+    {"label": "ℹ️ Legenda",           "view": "legenda"},
+    {"label": "🐔 Polli & Volpi",     "view": "polli_volpi"},
+    {"label": "💰 Cassa",             "view": "movimenti"},
+]
+
+
+def torna_home():
+    st.session_state.view = "home"
+
+
+                    # ==================== PANNELLO 1: FILIPPOIDE ====================
+
+def mostra_filipp():
+    st.markdown("<div class='panel'>", unsafe_allow_html=True)
+    st.markdown("## 🧮 Classifica Storica <b>Filippoide</b>", unsafe_allow_html=True)
+
+    # ===== SLIDER GIORNATA (solo per questa sezione) =====
+    ultima = 1
+    for g in sorted(df["giornata"].unique()):
+        # Se la giornata ha tutti gli esiti compilati, la consideriamo completata
+        if not df[df["giornata"] == g]["esito"].isna().any():
+            ultima = g
+
+    # 🔹 Memorizza e ricarica automaticamente l’ultima giornata completata
+    if "slider_fino_a" not in st.session_state:
+        st.session_state["slider_fino_a"] = ultima
+    elif ultima > st.session_state["slider_fino_a"]:
+        st.session_state["slider_fino_a"] = ultima
+
+    fino_a = st.slider(
+        "Mostra la situazione aggiornata fino alla giornata n°",
+        1,
+        NUM_GIORNATE,
+        value=st.session_state["slider_fino_a"],
+        key=f"slider_{st.session_state.view}"  # chiave unica per ogni sezione
+    )
+
+    st.session_state["slider_fino_a"] = fino_a
+
+    # Inizializzazione preventiva per evitare warning "non definito"
+    giornata_flag = {}
+    giornate_all_win = []
+    cashout_days = []
+
+    celebration_box = st.empty()  # ✅ box locale per le celebrazioni
+
+
+    # --- MINI COMPUTE (ricalcolo locale per avere flag e vincite) ---
+    try:
+        (_classifica, _df_polli, _df_volpi, _df_tab, _df_fili2, _df_gen2,
+        giornata_flag, _df_cassa, _df_mov, _df_seg,
+        giorno_player_extra, pollo_name, volpe_name,
+        last_all_win, giornate_all_win, cashout_days) = compute_all(
+            st.session_state.data,
+            fino_a=fino_a,
+            ricariche=st.session_state.get("ricariche", {}),
+            cashouts=st.session_state.get("cashouts", {})
+        )
+    except Exception:
+        pass
+
+    # --- LOGICA UNICA DI ATTIVAZIONE CELEBRAZIONI (usa celebration_box) ---
+    try:
+        selected_day = int(fino_a)
+
+        # Dati base dalla session (importi cashout)
+        cashouts = (st.session_state.get("cashouts", {}) or {})
+        co_val = cashouts.get(selected_day)
+
+        # Giorni 5/5 (no cash-out) -> {giornata: importo}
+        _allwin_amount = {g: imp for g, imp in (giornate_all_win or [])}
+
+        # Flag robusto
+        flag = (
+            (st.session_state.get("giornata_flag") or {}).get(selected_day)
+            or (giornata_flag or {}).get(selected_day)
+        )
+
+        has_cashout = (co_val is not None) and (float(co_val) != 0.0)
+        is_allwin_list = selected_day in _allwin_amount
+
+        # Svuota SEMPRE prima; se non deve mostrare nulla, resta vuoto
+        celebration_box.empty()
+
+        # Attiva SOLO la celebrazione corretta
+        if has_cashout:
+            if flag == "CASH_ALL_WIN":
+                celebrate_cashout_allwin(selected_day, co_val)
+            elif flag in ("CASH_POLLO", "CASH_POLLO_FANTASMA"):
+                celebrate_cashout_quasi(selected_day, co_val)
+            elif flag and str(flag).startswith("CASH_"):
+                celebrate_cashout(selected_day, co_val)
+        elif is_allwin_list:
+            celebrate_allwin(selected_day, _allwin_amount[selected_day])
+
+    except Exception as _cele_e:
+        # Non bloccare mai l'app per le celebrazioni
+        pass
+
+    # Tabella compatta con 👑 a MG78IT
+    det_rows = []
+    df_giorno = st.session_state.data[st.session_state.data["giornata"]==fino_a]
+    for p in PLAYERS:
+        saldo = df_fili[p].iloc[fino_a] if fino_a < len(df_fili) else df_fili[p].iloc[-1]
+        try:
+            d_val = float(saldo - df_fili[p].iloc[fino_a-1]) if fino_a-1 >= 0 else float(saldo)
+        except:
+            d_val = 0.0
+        q_vis=""
+        qrow = df_giorno[df_giorno["giocatore"] == p]
+        if not qrow.empty:
+            q_raw = qrow.iloc[0].get("quota")
+            qf = _try_float(q_raw)
+            q_vis = "" if qf is None else fmt1(qf)
+        else:
+            q_vis = ""
+        display_name = p + (" 👑" if p=="MG78IT" else "")
+        det_rows.append({"GIOCATORE": display_name, "Saldo": saldo, "Quota giornata": q_vis, "Δ giornata": d_val})
+
+    df_fili_rank = pd.DataFrame(det_rows).sort_values("Saldo", ascending=False).reset_index(drop=True)
+
+    # Convertiamo "Quota giornata" in numerico per forzare l'allineamento automatico a destra
+    if "Quota giornata" in df_fili_rank.columns:
+        df_fili_rank["Quota giornata"] = (
+            df_fili_rank["Quota giornata"]
+            .astype(str)
+            .str.replace(",", ".", regex=False)
+            .apply(lambda x: float(x) if x.replace('.', '', 1).isdigit() else None)
+        )
+
+        # Manteniamo l'ordine visivo delle colonne
+        df_fili_rank = df_fili_rank[["GIOCATORE", "Saldo", "Δ giornata", "Quota giornata"]]
+
+
+    def paint_fili_compact(df_in):
+        # colonne numeriche/di contenuto da centrare
+        cols_nums = ["Saldo", "Quota giornata", "Δ giornata"]
+
+        def name_style(v):
+            base_name = str(v)
+            key = "MG78IT" if base_name.startswith("MG78IT") else base_name
+            fg = NAME_COLORS.get(key, ("#e9e9e9", None))[0]
+            # testo nome colorato e centrato
+            return f"color:{fg}; font-weight:800; text-align:center;"
+
+        # applichiamo stile al nome, poi forziamo il centramento di header e celle con set_table_styles
+        sty = df_in.style.applymap(name_style, subset=["GIOCATORE"])
+
+        # proprietà per le colonne numeriche: centratura e colore
+        sty = sty.set_properties(**{"text-align": "center"}, subset=cols_nums)
+            # Sposta leggermente a destra solo la colonna "Quota giornata"
+        if "Quota giornata" in df_in.columns:
+            sty = sty.set_properties(subset=["Quota giornata"], **{"text-align": "right", "padding-right": "10px"})
+
+        sty = sty.set_properties(**{"color": "#ffffff"}, subset=cols_nums)
+
+        # dimensioni/celle fisse (opzionale ma aiuta la leggibilità)
+        for c in cols_nums:
+            if c in df_in.columns:
+                sty = sty.set_properties(subset=[c], **{"min-width": "90px", "width": "90px", "max-width": "90px"})
+
+        # Forziamo l'allineamento centrato anche per header e per tutte le celle (più robusto)
+        sty = sty.set_table_styles([
+            {"selector": "th.col_heading", "props": [("text-align", "center")]},
+            {"selector": "td", "props": [("text-align", "center")]},
+        ], overwrite=False)
+
+        return sty
+
+    # Allinea a destra solo la colonna "Quota giornata" nel widget st.dataframe
+    st.markdown(
+        """
+        <style>
+        /* Trova la colonna Quota giornata (4ª colonna) e allinea i valori a destra */
+        [data-testid="stDataFrame"] div[role="gridcell"][aria-colindex="4"],
+        [data-testid="stDataFrame"] div[role="columnheader"][aria-colindex="4"] {
+            justify-content: flex-end !important;
+            text-align: right !important;
+            padding-right: 14px !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # Funzione di formattazione sicura per evitare errori con celle None o vuote
+    def safe_fmt(x):
+        try:
+            return f"{x:.2f}" if pd.notnull(x) else ""
+        except Exception:
+            return ""
+
+    st.dataframe(
+        paint_fili_compact(
+            df_fili_rank.round({"Quota giornata": 2})  # Arrotonda solo la colonna visiva
+        ).format({
+            "Saldo": fmt1,
+            "Δ giornata": fmt1,
+            "Quota giornata": safe_fmt,  # <-- usa formattazione sicura
+        }),
+        hide_index=True,
+        use_container_width=True
+    )
+
+                # Grafico Filippoide
+    try:
+        if not df_fili.empty:
+            df_cut=df_fili[df_fili["Giornata"]<=fino_a].copy()
+            df_cut["Giornata"]=df_cut["Giornata"].astype(int)
+            if "MG78IT" in df_cut.columns:
+                df_cut = df_cut.rename(columns={"MG78IT":"MG78IT 👑"})
+            long=df_cut.melt(id_vars=["Giornata"], var_name="Giocatore", value_name="Valore")
+            alt_colors={"ANGEL":"#0B5ED7","GARIBALDI":"#FF00FF","CHRIS":"#19a319","MG78IT 👑":"#FFFFFF","FILLIP":"#00BFFF"}
+            ch=alt.Chart(long).mark_line(point=True).encode(
+                x=alt.X('Giornata:O', sort=None),
+                y=alt.Y('Valore:Q', title='Filippoide cumulata'),
+                color=alt.Color('Giocatore:N', scale=alt.Scale(domain=list(alt_colors.keys()), range=list(alt_colors.values()))),
+                tooltip=['Giornata','Giocatore','Valore']
+            ).properties(height=320)
+            st.altair_chart(ch, use_container_width=True)
+    except Exception:
+        pass
+    
+
+                # ==================== PANNELLO 2: POLLI & VOLPI ====================
+
+def mostra_polli_volpi():
+    st.markdown("<div class='panel'>", unsafe_allow_html=True)
+    st.markdown("### 🐔 Polli + Danno")
+
+    df_polli_view = df_polli.copy()
+    if "POLLI" in df_polli_view.columns and "DANNO" in df_polli_view.columns:
+        try:
+            df_polli_view["DANNO_num"] = (
+                df_polli_view["DANNO"]
+                .astype(str)
+                .str.extract(r"([\d,\.]+)")[0]
+                .str.replace(",", ".", regex=False)
+                .astype(float)
+                .fillna(0)
+            )
+            df_polli_view = (
+                df_polli_view.sort_values(
+                    by=["POLLI", "DANNO_num"],
+                    ascending=[False, False],
+                    kind="mergesort"
+                )
+                .drop(columns=["DANNO_num"])
+                .reset_index(drop=True)
+            )
+        except Exception as e:
+            st.warning(f"Impossibile ordinare Polli+Danno: {e}")
+    else:
+        df_polli_view = df_polli.copy()
+
+    st.dataframe(
+        paint_names_only(df_polli_view).set_properties(
+            subset=["POLLI"], **{"min-width": "60px", "width": "60px", "max-width": "60px", "text-align": "center"}
+        ).set_properties(
+            subset=["DANNO"], **{"min-width": "160px", "width": "160px", "max-width": "160px", "text-align": "center"}
+        ),
+        hide_index=True,
+        use_container_width=True
+    )
+
+    st.markdown("### 🦊 Volpi")
+    df_volpi_view = (
+        df_volpi.copy()
+        .sort_values("VOLPI", ascending=False, kind="mergesort")
+        .reset_index(drop=True)
+    )
+    st.dataframe(
+        paint_names_only(df_volpi_view).set_properties(
+            subset=["VOLPI"], **{"min-width": "60px", "width": "60px", "max-width": "60px", "text-align": "center"}
+        ),
+        hide_index=True,
+        use_container_width=True
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+
+
+                    # === PANNELLO KILLBET ARENA ===
+
+def mostra_classifica():
+    st.session_state.view = "classifica"
+    st.markdown("<div class='panel'>", unsafe_allow_html=True)
+    st.markdown("### 🏆 Killbet Arena")
+
+    classifica = pd.DataFrame()
+    df_gen = pd.DataFrame()
+
+    df = st.session_state.data.copy()  # ✅ usa sempre i dati aggiornati
+    
+        # ===== SLIDER GIORNATA =====
+    df0 = st.session_state.data
+    ultima = 1
+    for g in sorted(df0["giornata"].unique()):
+        if not df0[df0["giornata"] == g]["esito"].isna().any():
+            ultima = g
+
+
+    if "slider_fino_a" not in st.session_state:
+        st.session_state["slider_fino_a"] = ultima
+    elif ultima > st.session_state["slider_fino_a"]:
+        st.session_state["slider_fino_a"] = ultima
+
+    fino_a = st.slider(
+        "Mostra la situazione aggiornata fino alla giornata n°",
+        1,
+        NUM_GIORNATE,
+        value=st.session_state["slider_fino_a"],
+        key=f"slider_{st.session_state.view}_fix"  # fix stabile per evitare reset o schermo nero
+    )
+    st.session_state["slider_fino_a"] = fino_a
+    st.session_state["fino_a"] = fino_a
+
+
+    # Inizializzazione preventiva
+    giornata_flag = {}
+    giornate_all_win = []
+    cashout_days = []
+
+    # Usa sempre il contenitore globale
+    celebration_box = st.session_state["celebration_box"]
+    # Recupera eventuali DataFrame salvati dalla sessione
+    classifica = st.session_state.get("classifica", pd.DataFrame())
+    df_gen = st.session_state.get("df_gen", pd.DataFrame())
+    df_polli = st.session_state.get("df_polli", pd.DataFrame())
+    df_volpi = st.session_state.get("df_volpi", pd.DataFrame())
+
+    # ===== RICALCOLO DATI =====
+    try:
+        (classifica, df_polli, df_volpi, df_tab, df_fili, df_gen,
+        giornata_flag, df_cassa, df_mov, df_seg,
+        giorno_player_extra, pollo_name, volpe_name,
+        last_all_win, giornate_all_win, cashout_days) = compute_all(
+            st.session_state.data,
+            fino_a=fino_a,
+            ricariche=st.session_state.get("ricariche", {}),
+            cashouts=st.session_state.get("cashouts", {})
+        )
+
+        # salva i flag in sessione per le celebrate_*
+        st.session_state["giornata_flag"] = giornata_flag or {}
+
+        # ✅ Salva i DataFrame principali in sessione per evitare reset allo spostamento dello slider
+        st.session_state["classifica"] = classifica
+        st.session_state["df_gen"] = df_gen
+        st.session_state["df_polli"] = df_polli
+        st.session_state["df_volpi"] = df_volpi
+
+    
+    except Exception as e:
+        st.warning(f"Errore ricalcolo dati o celebrazioni: {e}")
+        # ✅ Reset completo delle variabili locali usate nel pannello Killbet Arena
+        classifica = pd.DataFrame()
+        df_gen = pd.DataFrame()
+        df_polli = pd.DataFrame()
+        df_volpi = pd.DataFrame()
+
+
+    # --- LOGICA UNICA DI ATTIVAZIONE CELEBRAZIONI ---
+    try:
+        selected_day = int(fino_a)
+        celebration_box.empty()
+
+        # Dati base dalla session (importi cashout)
+        cashouts = (st.session_state.get("cashouts", {}) or {})
+        co_val = cashouts.get(selected_day)
+
+        # Giorni 5/5 (no cash-out)
+        _allwin_amount = {g: imp for g, imp in (giornate_all_win or [])}
+
+        # Flag robusto
+        flag = (
+            (st.session_state.get("giornata_flag") or {}).get(selected_day)
+            or (giornata_flag or {}).get(selected_day)
+        )
+
+        has_cashout = (co_val is not None) and (float(co_val) != 0.0)
+        is_allwin_list = selected_day in _allwin_amount
+
+        # Attiva SOLO la celebrazione corretta
+        if has_cashout:
+            if flag == "CASH_ALL_WIN":
+                celebrate_cashout_allwin(selected_day, co_val)
+            elif flag in ("CASH_POLLO", "CASH_POLLO_FANTASMA"):
+                celebrate_cashout_quasi(selected_day, co_val)
+            elif flag and str(flag).startswith("CASH_"):
+                celebrate_cashout(selected_day, co_val)
+        elif is_allwin_list:
+            celebrate_allwin(selected_day, _allwin_amount[selected_day])
+
+    except Exception:
+        # Non bloccare mai l'app per le celebrazioni
+        pass
+
+    # ===== TABELLA CLASSIFICA =====
+    cols = [
+        "GIOCATORE", "Totale", "Punti base",
+        "Penalità quote basse",
+        "Bonus differenza quote", "Malus differenza quote",
+        "Bonus Volpe", "Malus Pollo", "Malus Pollo Fantasma",
+        "Bonus Champions", "Bonus Coraggio",
+        "Malus Fantasmino",
+        "Bonus Tutti Vincenti", "Malus Tutti Perdenti"
+    ]
+
+    if isinstance(classifica, pd.DataFrame) and set(cols).issubset(classifica.columns):
+        st.dataframe(
+            paint_names_only(classifica[cols]).format({
+                "Totale": fmt1, "Punti base": fmt1,
+                "Penalità quote basse": fmt1,
+                "Bonus differenza quote": fmt1, "Malus differenza quote": fmt1,
+                "Bonus Volpe": fmt1, "Malus Pollo": fmt1, "Malus Pollo Fantasma": fmt1,
+                "Bonus Champions": fmt1,
+                "Malus Fantasmino": fmt1,
+                "Bonus Coraggio": fmt1,
+                "Bonus Tutti Vincenti": fmt1,
+                "Malus Tutti Perdenti": fmt1,
+            }),
+            hide_index=True,
+            use_container_width=True
+        )
+    else:
+        st.info("Nessun dato classifica disponibile per la giornata selezionata.")
+
+    # ===== GRAFICO KILLBET ARENA =====
+    try:
+        if not df_gen.empty:
+            df_gen_cut = df_gen[df_gen["Giornata"] <= fino_a].copy()
+            df_gen_cut = df_gen_cut.dropna(axis=1, how="all")
+
+            long = df_gen_cut.melt(id_vars=["Giornata"], var_name="Giocatore", value_name="Punti")
+
+            alt_colors = {
+                "ANGEL": "#0B5ED7",
+                "GARIBALDI": "#FF00FF",
+                "CHRIS": "#19a319",
+                "MG78IT": "#FFFFFF",
+                "FILLIP": "#00BFFF"
+            }
+
+            ch_lines = alt.Chart(long).mark_line(opacity=0.85).encode(
+                x=alt.X('Giornata:O', sort=None),
+                y=alt.Y('Punti:Q', title='Killbet Arena (progressione)', scale=alt.Scale(zero=False, nice=True)),
+                color=alt.Color('Giocatore:N', scale=alt.Scale(domain=list(alt_colors.keys()), range=list(alt_colors.values()))),
+                tooltip=['Giornata', 'Giocatore', 'Punti']
+            )
+
+            long["same_score"] = long.groupby("Giornata")["Punti"].transform(lambda v: v.duplicated(keep=False))
+
+            base = alt.Chart(long).transform_window(
+                rank='row_number()',
+                sort=[alt.SortField('Giocatore', order='ascending')],
+                groupby=['Giornata', 'Punti']
+            )
+
+            ch_points_single = base.mark_point(filled=True, size=40, strokeWidth=1).encode(
+                x='Giornata:O',
+                y='Punti:Q',
+                color=alt.Color('Giocatore:N', scale=alt.Scale(domain=list(alt_colors.keys()), range=list(alt_colors.values())), legend=None)
+            )
+
+            ch_points_full = base.transform_filter('datum.same_score == true').mark_point(filled=True, size=200, strokeWidth=2).encode(
+                x='Giornata:O',
+                y='Punti:Q',
+                color=alt.Color('Giocatore:N', scale=alt.Scale(domain=list(alt_colors.keys()), range=list(alt_colors.values())), legend=None)
+            )
+
+            ch_points_conc = base.transform_filter('datum.same_score == true && datum.rank > 1').mark_point(filled=False, strokeWidth=4).encode(
+                x='Giornata:O',
+                y='Punti:Q',
+                size=alt.Size('rank:O', scale=alt.Scale(range=[130, 170, 210, 250, 290]), legend=None),
+                color=alt.Color('Giocatore:N', scale=alt.Scale(domain=list(alt_colors.keys()), range=list(alt_colors.values())), legend=None)
+            )
+
+            ch = (ch_lines + ch_points_single + ch_points_full + ch_points_conc).properties(height=320)
+            st.altair_chart(ch, use_container_width=True)
+
+    except Exception:
+        pass
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+
+
+                        # === PANNELLO LEGENDA PUNTI ===
+
+def mostra_legenda():
+    df_legenda = pd.DataFrame([
+        {"Sezione": "Punti base (1v1)", "Regola": "Uno vince / uno perde", "Valore": "3 (V) - 0 (P)"},
+        {"Sezione": "Punti base (1v1)", "Regola": "Entrambi vincono", "Valore": "2 a testa"},
+        {"Sezione": "Punti base (1v1)", "Regola": "Entrambi perdono", "Valore": "1 a testa"},
+        {"Sezione": "Bonus Coraggio", "Regola": "Assegnato solo ai vincenti; posizione per quota (decrescente); soglia ≤ 1,50 → 0", "Valore": "Temerario +1,10; Audace +0,80; Prudente +0,50; Braccino corto +0,30; Fifone +0,10"},
+        {"Sezione": "🚽 Penalità quota bassa (1,40–1,60)", "Regola": "Si applica nei confronti diretti (V–P, V–V, P–P) ai giocatori che scelgono quote prudenti. Il simbolo 🚽 indica scommesse troppo 'comode' o poco coraggiose.", "Valore": "V vincente −1,5 / V–V −1 ciascuno / P–P −0,5 ciascuno"},
+        {"Sezione": "🤡 Penalità quota Ridiculus (<1,40)", "Regola": "Si applica nei confronti diretti (V–P, V–V, P–P) ai giocatori che scelgono quote troppo basse o 'ridicole'. Il simbolo 🤡 identifica la fascia più penalizzante.", "Valore": "V vincente −2 / V–V −1,5 ciascuno / P–P −1 ciascuno"},
+        {"Sezione": "⚖️👍 Bonus differenza quote", "Regola": "Assegnato al giocatore con la quota più alta nei casi V–V e V–P.", "Valore": "+Δquote (max +3)"},
+        {"Sezione": "⚖️👎 Malus differenza quote", "Regola": "Assegnato al giocatore con la quota più bassa (V–P) o più alta (P–P).", "Valore": "−Δquote (max −3)"},
+        {"Sezione": "Tutti Vincenti (5V)", "Regola": "Senza cash-out: +5/+4/+3/+2/+1 dalla quota più alta alla più bassa", "Valore": "+5 / +4 / +3 / +2 / +1"},
+        {"Sezione": "Tutti Perdenti (5P)", "Regola": "Quota più alta −1 … quota più bassa −5", "Valore": "−1 / −2 / −3 / −4 / −5"},
+        {"Sezione": "🦊 Volpe (unico vincente)", "Regola": "Quota più alta +6 … più bassa +2 (se quote uguali, conta la più favorevole)", "Valore": "+6 / +5 / +4 / +3 / +2"},
+        {"Sezione": "🐔 Pollo (unico perdente)", "Regola": "Quota più bassa −6 … più alta −2 (se quote uguali, conta la più favorevole)", "Valore": "−6 / −5 / −4 / −3 / −2"},
+        {"Sezione": "Champions League", "Regola": "Per ogni 'V' in giornata Champions", "Valore": "+2 × quota"},
+        {"Sezione": "👻 Fantasmino", "Regola": "Mancata scommessa= -5. L’avversario: se V = +2, se P = +1 e subisce eventuali penalità per quote 🚽/🤡).", "Valore": "👻 −5 / Avversario +2 o +1"},
+        {"Sezione": "Filippoide", "Regola": "V: quota − 1 • P: −1 • 👻 Fantasmino: −1", "Valore": "cumulata da giornata 0"},
+    ])
+
+    st.markdown("### ℹ️ Legenda punti")
+    st.markdown("""
     <style>
-    body, [class*="css"]  {
-        background-color: #000000 !important;
-        color: white !important;
-    }
+    table {width: 100%; border-collapse: collapse; font-size: 1.1rem;}
+    th, td {border: 1px solid #444; padding: 8px 10px; text-align: center;}
+    th {background-color: #0a2a6b; color: white; font-weight: 900; text-transform: uppercase;}
+    tr:nth-child(even) {background-color: #111;}
+    tr:nth-child(odd) {background-color: #1a1a1a;}
+    tr:hover {background-color: #222;}
     </style>
-    """,
-    unsafe_allow_html=True
-)
+    """, unsafe_allow_html=True)
+
+    st.markdown(df_legenda.to_html(index=False, escape=False), unsafe_allow_html=True)
+
+
+                        # PANNELLO GIORNATE
+
+def mostra_giornate():
+    def giornata_card_html(g, subdf):
+        # Importo da mostrare
+        amount_html = ""
+        imp_val = None
+
+        # 1) Cash-out vince sempre la priorità
+        if g in cashout_days:
+            imp_val = st.session_state.get("cashouts", {}).get(g)
+
+        # 2) Nessun cash-out → se la giornata è ALL_WIN e hai messo una vincita manuale, mostra quella
+        elif (giornata_flag or {}).get(g) == "ALL_WIN":
+            mv = (st.session_state.get("manual_wins", {}) or {}).get(g)
+            if mv is not None:
+                imp_val = float(mv)
+
+
+        # Recupera lo stake salvato in quella giornata
+        day_stake = None
+        try:
+            day_stake = df[df["giornata"] == g]["stake"].iloc[0]
+        except Exception:
+            day_stake = None
+
+        # Flag della giornata
+        flag = (giornata_flag or {}).get(g)
+
+        # Default
+        base_class = "card"
+        title = f"Giornata {g}"
+
+        if flag == "CASH_ALL_WIN":
+            base_class = "card card-cashout"
+            title = f"💸 Giornata {g} — CASH OUT TUTTI VINCENTI"
+            try:
+                # Estraggo solo i vincenti reali della giornata
+                subset = df[df["giornata"] == g]
+                subset = subset[subset["esito"] == "V"]
+
+                # Mappa {giocatore: quota}
+                quote_map = subset.groupby("giocatore")["quota"].first().to_dict()
+
+                if len(quote_map) == 5:
+                    # Ordina le quote in modo decrescente
+                    sorted_players = sorted(quote_map.items(), key=lambda x: x[1], reverse=True)
+                    bonus_map = {
+                        sorted_players[0][0]: 5,
+                        sorted_players[1][0]: 4,
+                        sorted_players[2][0]: 3,
+                        sorted_players[3][0]: 2,
+                        sorted_players[4][0]: 1
+                    }
+
+                    # Applica i bonus sommando ai punteggi cumulativi (non azzera!)
+                    for pl, bonus_val in bonus_map.items():
+                        # Recupera punteggio precedente
+                        prev_pts = df_gen.loc[df_gen["Giornata"] == g - 1, pl].iloc[-1] if g > 1 and not df_gen.empty else 0
+                        # Aggiorna la colonna Bonus Tutti Vincenti (se esiste)
+                        df.loc[df["giocatore"] == pl, "bonus_allwin"] = (
+                            df.get("bonus_allwin", 0) + bonus_val
+                        )
+                        # Aggiorna la Killbet Arena mantenendo la progressione
+                        df_gen.loc[df_gen["Giornata"] == g, pl] = prev_pts + bonus_val
+
+            except Exception as e:
+                st.warning(f"Errore nel calcolo bonus CASH OUT TUTTI VINCENTI: {e}")
+            
+        elif flag == "CASH_FANTASMA":
+            base_class = "card card-cashfantasma"
+            title = f"👻 Giornata {g} — CASH OUT con FANTASMA{amount_html}"
+            
+        elif flag == "CASH_POLLO":
+            base_class = "card card-cashpollo"
+            loser = color_span(pollo_name.get(g, "")) or ""
+            title = f"🐔 Giornata {g} — CASH OUT con POLLO: {loser}{amount_html}"
+        
+        elif flag == "CASH_OUT":  # generico
+            base_class = "card card-cashout"
+            title = f"🪙 Giornata {g} — CASH OUT QUASI TUTTI VINCENTI{amount_html}"
+        
+        elif flag == "QUASI_ALL_WIN":
+            base_class = "card card-quasiwin"
+            title = f"🥈 Giornata {g} — I Fanta Vincenti 👻 (Quasi Tutti Vincenti)"
+        
+        elif flag == "ALL_WIN":
+            base_class = "card card-allwin"
+            title = f"🪙🪙🪙🪙🪙 Giornata {g} — TUTTI VINCENTI"
+        
+        elif flag in ("POLLO", "POLLO_FANTASMA"):
+            loser = color_span(pollo_name.get(g, ""))
+            base_class = "card card-pollo"
+            if flag == "POLLO_FANTASMA":
+                emoji, label = "🐔👻", "POLLO FANTASMA"
+            else:
+                emoji, label = "🐔", "POLLO"
+
+            # Danno economico SOLO da “Perdita Pollo” (manuale)
+            man_loss = (st.session_state.get("manual_losses", {}) or {}).get(g)
+            title = f"{emoji} Giornata {g} — {label}: {loser}"
+            if man_loss is not None:
+                title += f" — Danno: <span style='font-weight:900'>{eur(man_loss)} €</span>"
+
+            # Mostra sempre lo stake del giorno se presente
+            if day_stake not in (None, "", "null"):
+                title += (
+                    f"<div style='text-align:right; color:#ff3333; font-weight:900;'>"
+                    f"💶 Giocata: {eur(day_stake)} €</div>"
+                )
+
+                        
+        elif flag == "VOLPE":
+            base_class = "card card-volpe"
+            winner = color_span(volpe_name.get(g, "")) or ""
+            title = f"🦊 Giornata {g} — VOLPE: {winner}"
+            
+        elif flag == "ALL_LOSE":
+            base_class = "card card-alllose"
+            title = f"<span style='font-size:26px;'>💩💩💩💩💩</span> Giornata {g} — TUTTI PERDENTI"
+
+        else:
+            base_class = "card"
+            title = f"Giornata {g}"
+
+            # --- SOLO per ALL_WIN aggiungo importo e stake nel titolo ---
+        if flag == "ALL_WIN":
+            if imp_val not in (None, "", "null"):
+                title += f"<div style='font-weight:900'>{eur(imp_val)} €</div>"
+            if day_stake not in (None, "", "null"):
+                title += (
+                    f"<div style='text-align:right; color:#ff3333; font-weight:900;'>"
+                    f"💶 Giocata: {eur(day_stake)} €</div>"
+                )    
+
+        # Variabili di supporto
+        champs = st.session_state.get("champions_days", [])
+        cashouts = (st.session_state.get("cashouts", {}) or {})
+
+        # Importo del cash out
+        co_raw = cashouts.get(g, None)
+        co_val = _try_float(co_raw)
+        co_val_f = co_val if co_val is not None else 0.0
+        has_cashout = (co_val_f > 0)
+
+        amount_html = ""
+        if has_cashout:
+            amount_html = f" — Importo: <span style='font-weight:900'>{eur(co_val_f)} €</span>"
+
+        # Assegna classi e titoli
+        if (g in champs) and (not has_cashout):
+            base_class = 'card card-champday'
+            title = f'🏆🏆🏆🏆🏆 Giornata Champions {g}'
+
+        elif has_cashout:
+            if flag == "CASH_FANTASMA":
+                base_class = "card card-cashfantasma"
+                title = f"👻 Giornata {g} — CASH OUT con FANTASMA{amount_html}"
+
+            elif flag == "CASH_POLLO_FANTASMA":
+                base_class = "card card-cashpollofantasma"
+                loser = color_span(pollo_name.get(g, ""))
+                title = f"🐔👻 Giornata {g} — CASH OUT con POLLO + FANTASMA: {loser}{amount_html}"
+
+            elif flag == "CASH_POLLO":
+                base_class = "card card-cashpollo"
+                loser = color_span(pollo_name.get(g, ""))
+                title = f"🐔 Giornata {g} — CASH OUT con POLLO: {loser}{amount_html}"
+
+            else:  # cash out generico
+                base_class = "card card-cashout"
+                title = f"💸 Giornata {g} — CASH OUT{amount_html}"
+
+            # In tutti i tipi di cash out mostriamo anche lo stake
+            if day_stake not in (None, "", "null"):
+                title += (
+                    f"<div style='text-align:right; color:#ff3333; font-weight:900;'>"
+                    f"💶 Giocata: {eur(day_stake)} €</div>"
+                )
+
+        extras = giorno_player_extra.get(g, {})
+
+        # --- Extra (bonus/malus con icone) ---
+                        
+        def extra_for(player_name):
+            ICON = {
+                "fox": "🦊",
+                "hen": "🐔",
+                "hen_ghost": "🐔👻",
+                "ghost": "👻",
+                "champ": "✖️2",
+                "allwin": "🏅",
+                "alllose": "💩",
+            }
+            def courage_emoji(why):
+                w = (why or "").lower()
+                if "temerario" in w: return "🦁"
+                if "audace" in w:    return "💪"
+                if "prudente" in w:  return "🐢"
+                if "braccino" in w:  return "🤏"
+                if "fifone" in w:    return "🐇"
+                return "🔥"
+            out = ""
+            fg = NAME_COLORS.get(player_name, ("#e9e9e9", None))[0]
+            for kind, pts, why in extras.get(player_name, []):
+                emoji = courage_emoji(why) if kind == "courage" else ICON.get(kind, "")
+                if pts is None:
+                    out += f"<span class='chip' style='color:{fg}'>{emoji} <small>({why})</small></span>"
+                else:
+                    sign = "+" if float(pts) >= 0 else ""
+                    out += f"<span class='chip' style='color:{fg}'>{emoji} {sign}{fmt1(pts)} <small>({why})</small></span>"
+            return out
+
+        # --- Match 1vs1 ---
+
+        def row(partita):
+            if not (subdf["partita"] == partita).any():
+                return ""
+            p = subdf[subdf["partita"] == partita].iloc[0]
+            casa_name = p["CASA"]
+            osp_name = p["OSPITE"]
+
+            q_casa = f" ({float(p['Q_CASA']):.2f})" if p.get("Q_CASA") not in (None, "") else ""
+            q_osp = f" ({float(p['Q_OSP']):.2f})" if osp_name and p.get("Q_OSP") not in (None, "") else ""
+
+            def _is_ghost(name):
+                return any(k == "ghost" for (k, _, _) in extras.get(name, []))
+            if _is_ghost(casa_name):
+                q_casa = " <span class='qbr'>👻</span>"
+            if osp_name and _is_ghost(osp_name):
+                q_osp = " <span class='qbr'>👻</span>"
+
+            casa_col = NAME_COLORS.get(casa_name, ("#e9e9e9", None))[0]
+            osp_col = NAME_COLORS.get(osp_name, ("#e9e9e9", None))[0] if osp_name else "#e9e9e9"
+            casa = f"<span style='color:{casa_col};font-weight:800'>{casa_name}{q_casa}</span>"
+            osp = f"<span style='color:{osp_col};font-weight:800'>{osp_name}{q_osp}</span>" if osp_name else ""
+
+            def esito_display(esito, is_ghost):
+                if is_ghost:
+                    return "👻"
+                return esito_colored(esito)
+
+            e_c = esito_display(p["E_CASA"], p.get("F_CASA", False))
+            e_o = esito_display(p["E_OSP"], p.get("F_OSP", False))
+
+            def fval(key):
+                try: return float(p.get(key, 0) or 0)
+                except Exception: return 0.0
+
+            tot_casa = fval("BASE_CASA") + fval("B_CASA") + fval("M_CASA") + fval("HALF_CASA")
+            tot_osp = fval("BASE_OSP") + fval("B_OSP") + fval("M_OSP") + fval("HALF_OSP")
+            for _, pts, _ in extras.get(casa_name, []):
+                if pts: tot_casa += float(pts)
+            for _, pts, _ in extras.get(osp_name, []):
+                if pts: tot_osp += float(pts)
+
+            def fmt_result(v):
+                return str(int(v)) if float(v).is_integer() else f"{v:.2f}"
+            risultato = (
+                f"<div class='es'><b>Risultato goliardico:</b> "
+                f"<span style='color:{casa_col}'>{casa_name} {fmt_result(tot_casa)}</span> – "
+                f"<span style='color:{osp_col}'>{fmt_result(tot_osp)} {osp_name}</span></div>"
+            )
+
+            def chip(label, val, color, icon=""):
+                if val == 0 or val == "" or val is None: return ""
+                sign = "+" if float(val) > 0 else ""
+                return f"<span class='chip' style='color:{color}'>{icon} {label}: {sign}{fmt1(val)}</span>"
+
+            # --- Sezione visualizzazione punteggi casa/ospite con penalità aggiornate ---
+            # Determina la descrizione corretta del tipo di penalità in base alla quota
+            def label_penalita(q):
+                if q is None:
+                    return None
+                try:
+                    qf = float(q)
+                    if qf < 1.40:
+                        return "🤡 Penalità quota Ridiculus"
+                    elif 1.40 <= qf <= 1.60:
+                        return "🚽 Penalità quota bassa"
+                except Exception:
+                    return None
+                return None
+
+            # Determina il simbolo e il testo dinamico
+            pen_casa_label = label_penalita(p.get("Q_CASA"))
+            pen_osp_label = label_penalita(p.get("Q_OSP"))
+
+            casa_steps = (
+                f"<div class='steps'>"
+                f"{chip('punti base', fval('BASE_CASA'), casa_col, '🎯')}"
+                f"{chip('Bonus diff. quote', fval('B_CASA'), casa_col, '⚖️👍')}"
+                f"{chip(pen_casa_label if pen_casa_label else '—', fval('HALF_CASA'), casa_col, '') if pen_casa_label else ''}"
+                f"{chip('malus diff.quote', fval('M_CASA'), casa_col, '⚖️👎')}"
+                f"{extra_for(casa_name)}"
+                f"</div>"
+                f"<span class='chip strong' style='color:{casa_col}'>💰 Totale punti giornata di {casa_name.upper()}: {fmt1(tot_casa)}</span>"
+            )
+
+            osp_steps = ""
+            if osp_name:
+                osp_steps = (
+                    f"<div class='steps'>"
+                    f"{chip('punti base', fval('BASE_OSP'), osp_col, '🎯')}"
+                    f"{chip('Bonus diff. quote', fval('B_OSP'), osp_col, '⚖️👍')}"
+                    f"{chip(pen_osp_label if pen_osp_label else '—', fval('HALF_OSP'), osp_col, '') if pen_osp_label else ''}"
+                    f"{chip('malus diff.quote', fval('M_OSP'), osp_col, '⚖️👎')}"
+                    f"{extra_for(osp_name)}"
+                    f"</div>"
+                    f"<span class='chip strong' style='color:{osp_col}'>💰 Totale punti giornata di {osp_name.upper()}: {fmt1(tot_osp)}</span>"
+                )
+
+
+            return (
+                f"<div class='riga'>"
+                f"<div class='vs'>{casa} vs {osp}</div>"
+                f"<div class='es'>{e_c} – {e_o}</div>"
+                f"{risultato}"
+                f"{casa_steps}{osp_steps}"
+                f"</div>"
+            )
+
+        # --- Giocatore a riposo 🛌 ---
+                        
+        def row_riposo(player_name):
+            fg = NAME_COLORS.get(player_name, ("#e9e9e9", None))[0]
+            tot = 0.0
+            for _, pts, _ in extras.get(player_name, []):
+                if pts:
+                    try: tot += float(pts)
+                    except: pass
+            chips = extra_for(player_name)
+            total_chip = (
+                f"<span class='chip strong' style='color:{fg}'>"
+                f"💰 Totale punti giornata di {player_name.upper()}: {fmt1(tot)}</span>"
+            )
+            return (
+                f"<div class='riga'>"
+                f"<div class='vs'><span style='color:{fg};font-weight:800'>{player_name} 🛌 — RIPOSO</span></div>"
+                f"<div class='steps'>{chips}</div>"
+                f"{total_chip}"
+                f"</div>"
+            )
+
+        # --- RIP dal DF ---
+        rip_html = ""
+        if (subdf["partita"] == "RIP").any():
+            rp = subdf[subdf["partita"] == "RIP"].iloc[0]
+            try:
+                row_rip_df = st.session_state.data[
+                    (st.session_state.data["giornata"] == g) & 
+                    (st.session_state.data["slot"] == "RIP")
+                ].iloc[0]
+                is_ghost_rip = bool(row_rip_df.get("fantasmino", False))
+            except Exception:
+                is_ghost_rip = False
+
+            name_txt = rp["CASA"]
+            rip_col = NAME_COLORS.get(name_txt, ('#e9e9e9', None))[0]
+
+            if is_ghost_rip:
+                qtxt = f" <span style='color:{rip_col};font-weight:800'>👻</span>"
+                e_c = "👻"
+            else:
+                q_val = _try_float(rp.get("Q_CASA"))
+                qtxt = f" <span style='color:{rip_col}'>({fmt1(q_val)})</span>" if q_val is not None else ""
+                e_c = esito_colored(rp["E_CASA"])
+
+            name = color_span(name_txt)
+
+
+            # Usa la stessa logica degli altri giocatori (extra_for)
+            rip_extra = extra_for(name_txt)
+            
+            # Calcolo totale punti del RIP dal giorno_player_extra
+            tot_rip = 0.0
+            for kind, pts, why in extras.get(name_txt, []):
+                if pts is not None:
+                    try:
+                        tot_rip += float(pts)
+                    except:
+                        pass
+
+            # Costruzione finale del riposo con chip e totale
+            rip_html = (
+                f"<div class='rip'><b style='color:{GOLD}'>RIPOSO</b>: "
+                f"<span class='ripname'>{name}</span>{qtxt} — Esito: <b>{e_c}</b>"
+                f"<div class='steps'>{rip_extra}</div>"
+                f"<span class='chip strong' style='color:{NAME_COLORS.get(name_txt,('#e9e9e9',None))[0]}'>"
+                f"💰 Totale punti giornata di {name_txt.upper()}: {fmt1(tot_rip)}</span>"
+                f"</div>"
+            )
+
+                            # --- Corpo card finale ---
+                            
+        card_body = f"{row('1')}{row('2')}{rip_html}"
+        return f"<div class='{base_class}'><div class='card-head'>{title}</div><div class='card-body'>{card_body}</div></div>"
+
+    def subdf_for_g(g):
+        sub=df_tab[df_tab["giornata"]==g]
+        if sub.empty:
+            f=FIXTURES[g-1]
+            rows=[{"giornata":g,"partita":"1","CASA":f["CASA1"],"OSPITE":f["OSP1"],"Q_CASA":None,"Q_OSP":None,"E_CASA":None,"E_OSP":None},
+                {"giornata":g,"partita":"2","CASA":f["CASA2"],"OSPITE":f["OSP2"],"Q_CASA":None,"Q_OSP":None,"E_CASA":None,"E_OSP":None},
+                {"giornata":g,"partita":"RIP","CASA":f["RIP"],"OSPITE":"","Q_CASA":None,"Q_OSP":None,"E_CASA":None,"E_OSP":None}]
+            return pd.DataFrame(rows)
+        return sub
+
+    CARDS_PER_ROW=4
+    for start in range(1, NUM_GIORNATE+1, CARDS_PER_ROW):
+        cols=st.columns(CARDS_PER_ROW)
+        for i,col in enumerate(cols):
+            g=start+i
+            if g>NUM_GIORNATE: break
+            with col: st.markdown(giornata_card_html(g, subdf_for_g(g)), unsafe_allow_html=True)
+            
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+
+
+# ==================== PANNELLO 4: CASSA ====================
+
+def mostra_movimenti():
+    st.session_state.view = "movimenti"
+    st.markdown("<div class='panel'>", unsafe_allow_html=True)
+    st.markdown("<h3 class='goldcell'>📊 Fondo Speculazioni Sportive 📊</h3>", unsafe_allow_html=True)
+    
+    df = st.session_state.data.copy()  # ✅ usa sempre i dati aggiornati
+
+    # ===== SLIDER GIORNATA =====
+    df0 = st.session_state.data  # ✅ stesso comportamento di Filippoide
+    ultima = 1
+    for g in sorted(df0["giornata"].unique()):
+        if not df0[df0["giornata"] == g]["esito"].isna().any():
+            ultima = g
+
+
+    if "slider_fino_a" not in st.session_state:
+        st.session_state["slider_fino_a"] = ultima
+    elif ultima > st.session_state["slider_fino_a"]:
+        st.session_state["slider_fino_a"] = ultima
+
+    fino_a = st.slider(
+        "Mostra la situazione aggiornata fino alla giornata n°",
+        1, NUM_GIORNATE,
+        value=st.session_state["slider_fino_a"],
+        key=f"slider_{st.session_state.view}_fix"
+    )
+    st.session_state["slider_fino_a"] = fino_a
+    st.session_state["fino_a"] = fino_a
+
+
+    # Inizializzazione preventiva
+    giornata_flag = {}
+    giornate_all_win = []
+    cashout_days = []
+
+    # Usa il contenitore globale già creato
+    celebration_box = st.session_state["celebration_box"]
+
+    # ===== RICALCOLO DATI =====
+    try:
+        (classifica, df_polli, df_volpi, df_tab, df_fili, df_gen,
+        giornata_flag, df_cassa, df_mov, df_seg,
+        giorno_player_extra, pollo_name, volpe_name,
+        last_all_win, giornate_all_win, cashout_days) = compute_all(
+            st.session_state.data,
+            fino_a=fino_a,
+            ricariche=st.session_state.get("ricariche", {}),
+            cashouts=st.session_state.get("cashouts", {})
+        )
+
+        # salva i flag per uso nelle celebrazioni
+        st.session_state["giornata_flag"] = giornata_flag or {}
+
+    except Exception as e:
+        st.warning(f"Errore ricalcolo dati o celebrazioni: {e}")
+        df_cassa = pd.DataFrame()
+        df_mov = pd.DataFrame()
+        df_seg = pd.DataFrame()
+
+    # --- LOGICA CELEBRAZIONI ---
+    try:
+        selected_day = int(fino_a)
+        celebration_box.empty()
+
+        cashouts = (st.session_state.get("cashouts", {}) or {})
+        co_val = cashouts.get(selected_day)
+        _allwin_amount = {g: imp for g, imp in (giornate_all_win or [])}
+
+        flag = (
+            (st.session_state.get("giornata_flag") or {}).get(selected_day)
+            or (giornata_flag or {}).get(selected_day)
+        )
+
+        has_cashout = (co_val is not None) and (float(co_val) != 0.0)
+        is_allwin_list = selected_day in _allwin_amount
+
+        if has_cashout:
+            if flag == "CASH_ALL_WIN":
+                celebrate_cashout_allwin(selected_day, co_val)
+            elif flag in ("CASH_POLLO", "CASH_POLLO_FANTASMA"):
+                celebrate_cashout_quasi(selected_day, co_val)
+            elif flag and str(flag).startswith("CASH_"):
+                celebrate_cashout(selected_day, co_val)
+        elif is_allwin_list:
+            celebrate_allwin(selected_day, _allwin_amount[selected_day])
+
+    except Exception:
+        pass
+
+    # ===== GRAFICO CASSA =====
+    try:
+        if not df_seg.empty and not df_cassa.empty:
+            col_domain = ["GOLD", "GREEN", "ORANGE", "RED", "BROWN"]
+            col_range = [GOLD, "#16c60c", ORANGE, "#ff3b3b", BROWN]
+
+                # ultima giornata utile (robusta anche se i valori non sono stringhe)
+            try:
+                if not df_mov.empty and "Giornata" in df_mov.columns:
+                    s = (
+                        df_mov["Giornata"]
+                        .astype(str)                                 # converte sempre in stringa
+                        .str.replace(",", ".", regex=False)          # es. RG5,0 → RG5.0
+                        .str.extract(r"(\d+(?:\.\d+)?)")[0]          # estrae il numero 5 o 5.0
+                    )
+                    s = pd.to_numeric(s, errors="coerce")            # trasforma in numerico
+                    last_day = int(s.dropna().max()) if not s.dropna().empty else 1
+                else:
+                    last_day = 1
+            except Exception:
+                last_day = 1
+
+            # asse X con etichette personalizzate
+            _ticks_df = (
+                df_cassa.sort_values("x")[["x", "Giornata"]]
+                .drop_duplicates(subset=["x"])
+                .round(2)
+            )
+            _tick_vals = _ticks_df["x"].tolist()
+            _map = {f"{v:.2f}": str(lbl) for v, lbl in _ticks_df.to_records(index=False)}
+            _label_expr = "(" + "{%s}" % ", ".join([f"'{k}': '{v}'" for k, v in _map.items()]) + ")" + "[format(datum.value, '.2f')]"
+
+            line = alt.Chart(df_seg).mark_line(size=4).encode(
+                x=alt.X("x:Q",
+                        title="Giornata",
+                        axis=alt.Axis(values=_tick_vals, labelExpr=_label_expr,
+                                    labelFlush=False, labelOverlap=True),
+                        scale=alt.Scale(domain=(0, last_day + 0.5))),
+                y=alt.Y("y:Q", title="Cassa €"),
+                color=alt.Color("Colore:N",
+                                scale=alt.Scale(domain=col_domain, range=col_range),
+                                legend=None),
+                detail="seg_id:N",
+                order="ord:O"
+            ).properties(height=340)
+
+            chart = line + alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(
+                color="#8B4513", strokeWidth=6
+            ).encode(y="y:Q")
+
+            # marker finale e valore attuale
+            if not df_cassa.empty:
+                last_pt = df_cassa.iloc[[-1]]
+                chart += alt.Chart(last_pt).mark_point(size=160, color="gold", shape="diamond").encode(x="x:Q", y="y:Q")
+                chart += alt.Chart(last_pt).mark_text(align="left", dx=10, dy=-10,
+                                                    fontSize=16, fontWeight="bold",
+                                                    color="gold").encode(
+                    x="x:Q", y="y:Q", text=alt.Text("y:Q", format=".2f")
+                )
+
+            # emoji centrali
+            all_emojis = []
+            for seg_id, rows in df_seg.groupby("seg_id"):
+                if len(rows) == 2:
+                    p1, p2 = rows.to_dict("records")
+                    mid_x = (p1["x"] + p2["x"]) / 2
+                    mid_y = (p1["y"] + p2["y"]) / 2
+                    col = p2["Colore"]
+                    emoji = None
+                    if p2["y"] > p1["y"]:
+                        emoji = {"GREEN": "💵", "GOLD": "🪙", "ORANGE": "💶",
+                                "BROWN": "💸", "RED": "👍"}.get(col)
+                    elif p2["y"] < p1["y"]:
+                        emoji = {"GOLD": "🤩", "GREEN": "🙂",
+                                "ORANGE": "😟", "RED": "😱"}.get(col)
+                    if emoji:
+                        all_emojis.append({"x": mid_x, "y": mid_y, "Emoji": emoji})
+
+            if all_emojis:
+                df_emojis = pd.DataFrame(all_emojis)
+                chart += alt.Chart(df_emojis).mark_text(fontSize=30, dy=-30).encode(x="x:Q", y="y:Q", text="Emoji:N")
+
+            # modalità di visualizzazione
+            mode = st.radio(
+                "Visualizzazione grafico",
+                ["Compatto con scroll", "Tutte le giornate compresse", "Schermo intero automatico"],
+                index=0
+            )
+
+            if mode == "Compatto con scroll":
+                chart_scroll = chart.properties(width=3000, height=340)
+                st.markdown("<div style='overflow-x:auto; border:2px solid #444; border-radius:10px; padding:6px;'>",
+                            unsafe_allow_html=True)
+                st.altair_chart(chart_scroll, use_container_width=False)
+                st.markdown("</div>", unsafe_allow_html=True)
+            elif mode == "Tutte le giornate compresse":
+                st.altair_chart(chart.properties(height=340), use_container_width=True)
+            else:
+                st.altair_chart(chart.properties(height=400), use_container_width=True)
+
+            st.caption("💡 Suggerimento: su smartphone la modalità 'Compatto con scroll' è più leggibile.")
+    except Exception:
+        pass
+
+    # ===== TABELLA MOVIMENTI =====
+    if not df_mov.empty:
+        giornata_corrente = df_mov["Giornata"].iloc[-1]
+        cassa_attuale = df_mov["Cassa dopo €"].iloc[-1]
+        st.markdown(f"<h4 style='color:gold'>💰 Cassa attuale {giornata_corrente}: "
+                    f"<span style='font-size:1.5em;'>{cassa_attuale}</span></h4>", unsafe_allow_html=True)
+        st.markdown("#### 📒 Movimenti cassa")
+        st.dataframe(df_mov, hide_index=True, use_container_width=True)
+    else:
+        st.markdown(f"<h4 style='color:gold'>💰 Cassa attuale G1: "
+                    f"<span style='font-size:1.5em;'>{eur(CASSA_START)}</span></h4>", unsafe_allow_html=True)
+        st.markdown("#### 📒 Movimenti cassa")
+        st.caption("Nessun movimento ancora registrato.")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 
 # -------------------- Percorsi file di salvataggio --------------------
+
 # Tutti i file vengono ora salvati e caricati nella sottocartella "data"
 DATA_DIR = "data"
 
@@ -108,16 +1297,21 @@ def load_all():
         st.error(f"Errore caricamento dati: {e}")
 
 
-# Effetti (facoltativi)
+                    # Effetti (facoltativi)
+celebration_box = st.empty()  # contenitore unico per tutte le celebrazioni
 try:
     from streamlit_extras.let_it_rain import rain
+    celebration_box = st.empty()
     HAS_RAIN = True
 except ImportError:
     HAS_RAIN = False
     def rain(*args, **kwargs):  # safe stub se la libreria manca
         pass
 
-# -------------------- COSTANTI --------------------
+
+
+        # -------------------- COSTANTI --------------------
+
 TITLE = "KILL Bet365 League 2025-2026"
 PLAYERS = ["ANGEL","GARIBALDI","CHRIS","MG78IT","FILLIP"]
 NUM_GIORNATE = 40
@@ -132,7 +1326,7 @@ if "stake_value" not in st.session_state:
 # Variabile globale usata da tutti i calcoli
 STAKE = float(st.session_state["stake_value"])
 CASSA_START = 46.83      # cassa iniziale
-ADMIN_PIN = "1234"
+ADMIN_PIN = "ET2856"
 
 # Colori nomi
 NAME_COLORS = {
@@ -148,7 +1342,9 @@ BROWN  = "#8B4513"
 SILVER = "#C0C0C0"
 GREEN  = "#16c60c"
 
-# -------------------- UTIL --------------------
+
+            # -------------------- UTIL --------------------
+            
 def esito_colored(ch):
     if ch=="V": return "<span class='good'>V</span>"
     if ch=="P": return "<span class='bad'>P</span>"
@@ -202,7 +1398,8 @@ def _try_float(x):
     except:
         return None
 
-# -------------------- CALENDARIO --------------------
+        # -------------------- CALENDARIO --------------------
+        
 def generate_schedule(players, rounds):
     teams = players[:]
     if len(teams) % 2 == 1:
@@ -234,25 +1431,69 @@ def giornata_map(pairs):
 
 FIXTURES = [giornata_map(p) for p in generate_schedule(PLAYERS, NUM_GIORNATE)]
 
-# -------------------- STATE --------------------
+            # -------------------- STATE --------------------
+            
 def init_state():
     if "champions_days" not in st.session_state:
         st.session_state["champions_days"] = []
     if "data" not in st.session_state:
-        rows=[]
-        for g,f in enumerate(FIXTURES, start=1):
-            for slot,key in [("CASA1","CASA1"),("OSP1","OSP1"),
-                            ("CASA2","CASA2"),("OSP2","OSP2"),("RIP","RIP")]:
-                rows.append({"giornata":g,"slot":slot,"giocatore":f[key],
-                            "esito":None,"quota":None,"fantasmino":False})
-
+        rows = []
+        for g, f in enumerate(FIXTURES, start=1):
+            for slot, key in [
+                ("CASA1", "CASA1"),
+                ("OSP1", "OSP1"),
+                ("CASA2", "CASA2"),
+                ("OSP2", "OSP2"),
+                ("RIP", "RIP"),
+            ]:
+                rows.append({
+                    "giornata": g,
+                    "slot": slot,
+                    "giocatore": f[key],
+                    "esito": None,
+                    "quota": None,
+                    "fantasmino": False,
+                })
         st.session_state.data = pd.DataFrame(rows)
+
+    # Impostazioni di sessione standard
     st.session_state.setdefault("admin_pin_ok", False)
     st.session_state.setdefault("ricariche_text", "")
     st.session_state.setdefault("cashouts", {})    # {giornata_int: importo_float}
     st.session_state.setdefault("ricariche", {})
+
     # Se ci sono file salvati, ricaricali
     load_all()
+
+
+                # ===== BOOTSTRAP SLIDER/STATO GIORNATA =====
+try:
+    df0 = st.session_state.data
+    # Individua l’ultima giornata COMPLETATA (tutte le righe con 'esito' non NaN)
+    ultima_completata = 1
+    for g in sorted(df0["giornata"].unique()):
+        if not df0[df0["giornata"] == g]["esito"].isna().any():
+            ultima_completata = int(g)
+except Exception:
+    ultima_completata = 1
+
+# ===== SINCRONIZZAZIONE STATO =====
+# Se non esiste, crea il riferimento principale
+if "fino_a" not in st.session_state:
+    st.session_state["fino_a"] = ultima_completata
+
+# Se lo slider non esiste, allinealo
+if "slider_fino_a" not in st.session_state:
+    st.session_state["slider_fino_a"] = st.session_state["fino_a"]
+
+# Se è apparsa una giornata nuova, aggiorna automaticamente
+if ultima_completata > st.session_state["fino_a"]:
+    st.session_state["fino_a"] = ultima_completata
+    st.session_state["slider_fino_a"] = ultima_completata
+
+# Crea alias di comodo usato nel resto del codice
+fino_a = int(st.session_state["fino_a"])
+
 
 
 # -------------------- PUNTEGGI BASE (storici) --------------------
@@ -497,8 +1738,8 @@ def compute_courage_rank(quotes_map, winners_set, rank_points=None, threshold=1.
 
     return out
 
-
 # ==================== NUOVE REGOLE 1v1 (integrazione) ====================
+
 USE_SFIDA_RULES = True
 LOW_ODDS_THRESHOLD = 1.50
 
@@ -516,6 +1757,7 @@ def _fmt_signed(v):
 
 
 # -------------------- CALCOLI --------------------
+
 # --- Wrapper Fantasmino: se c'è il fantasma in una delle due posizioni,
 #     applica le regole speciali e NON considera differenze/dimezzi. ---
 def compute_points_pair(eh, ea, qh, qa):
@@ -879,7 +2121,7 @@ def compute_all(df, fino_a=None, ricariche=None, cashouts=None):
         df = df.copy()
         df["fantasmino"] = False
 
-    # per grafico classifica generale (progressione per giornata)
+    # per grafico Killbet Arena (progressione per giornata)
     per_day_points = {p:[] for p in PLAYERS}
     per_day_totals = {p:0.0 for p in PLAYERS}
     
@@ -1137,6 +2379,7 @@ def compute_all(df, fino_a=None, ricariche=None, cashouts=None):
                         giorno_player_extra[g].setdefault(pl, []).append(("champ", 2.0 * qv, "bonus champions"))
         
         # ---------- Bonus Coraggio (ranking globale su TUTTE le quote reali; attivo anche con CASH OUT) ----------
+        
         try:
             # 🔸 Calcola il Bonus Coraggio solo se NON è una giornata Tutti Vincenti o Cash Out Tutti Vincenti
             if giornata_flag.get(g) not in ("ALL_WIN", "CASH_ALL_WIN"):
@@ -1173,10 +2416,10 @@ def compute_all(df, fino_a=None, ricariche=None, cashouts=None):
                             )
         except Exception as e:
             print(f"[ERRORE Bonus Coraggio G{g}]: {e}")
-        # ---------- fine Bonus Coraggio ----------
+        
+        
         
         # --- VOLPE / POLLO extra (sempre; indipendente da Champions) ---
-        # NB: assegnamo solo quando giornata_flag indica un caso valido.
         #    Ricostruiamo qui una quotes_map robusta sui soli REALI (RIP incluso), esclusi i 👻.
         if giornata_flag.get(g) in ("VOLPE", "POLLO", "CASH_POLLO", "POLLO_FANTASMA", "CASH_POLLO_FANTASMA"):
             quotes_map2 = {}
@@ -1246,7 +2489,7 @@ def compute_all(df, fino_a=None, ricariche=None, cashouts=None):
                         ("hen_ghost", pts_adj, f"Pollo Fantasma — {why} (−1 rispetto al Pollo)")
                     )
 
-        # punti di giornata per grafico classifica generale (inclusi extra/malus)
+        # punti di giornata per grafico Killbet Arena (inclusi extra/malus)
         daily_add = {p: 0.0 for p in PLAYERS}
 
         # 1) punti base dalle partite
@@ -1271,7 +2514,8 @@ def compute_all(df, fino_a=None, ricariche=None, cashouts=None):
             per_day_points[p].append(per_day_totals[p])
 
 
-    # Classifica generale
+                    # Killbet Arena
+                    
     # Ricalcolo robusto dei malus Fantasmino direttamente dal DF filtrato (fino_a)
     if "fantasmino" in df.columns:
         _gp = (
@@ -1502,11 +2746,11 @@ def compute_all(df, fino_a=None, ricariche=None, cashouts=None):
     
     for p in PLAYERS: df_fili[p]=cum[p]
 
-    # Serie classifica generale per grafico (con Fantasmino incluso)
+    # Serie Killbet Arena per grafico (con Fantasmino incluso)
     df_gen = pd.DataFrame({"Giornata": list(range(1, max_len + 1))})
     for p in PLAYERS: df_fili[p]=cum[p]
 
-    # Serie classifica generale per grafico (malus Fantasmino già incluso negli extra → no doppio conteggio)
+    # Serie Killbet Arena per grafico (malus Fantasmino già incluso negli extra → no doppio conteggio)
     df_gen = pd.DataFrame({"Giornata": list(range(1, max_len + 1))})
     for p in PLAYERS:
         vals = []
@@ -1522,8 +2766,10 @@ def compute_all(df, fino_a=None, ricariche=None, cashouts=None):
 
         df_gen[p] = vals
 
-    # Arrotondo i valori della classifica generale a 2 decimali
+    # Arrotondo i valori della Killbet Arena a 2 decimali
     df_gen = df_gen.round(2)
+
+
 
 
                     # ===== MOVIMENTI CASSA (timeline) =====
@@ -1549,25 +2795,25 @@ def compute_all(df, fino_a=None, ricariche=None, cashouts=None):
                 flag = giornata_flag.get(g, "CASH_OUT")
 
                 if flag == "CASH_FANTASMA":
-                    ghosts = [str(r["giocatore"]) for _, r in day.iterrows() if bool(r.get("fantasmino", False))]
-                    ghost_list = ", ".join(ghosts) if ghosts else "?"
-                    events.append((float(g), f"G{g} — 👻 CASH OUT con FANTASMA {ghost_list}", imp_val, "cashout_fantasma"))
+                        ghosts = [str(r["giocatore"]) for _, r in day.iterrows() if bool(r.get("fantasmino", False))]
+                        ghost_list = ", ".join(ghosts) if ghosts else "?"
+                        events.append((float(g) + 0.3, f"G{g} — 👻 CASH OUT con FANTASMA {ghost_list}", imp_val, "cashout_fantasma"))
 
                 elif flag == "CASH_POLLO_FANTASMA":
-                    loser = pollo_name.get(g, "")
-                    ghosts = [str(r["giocatore"]) for _, r in day.iterrows() if bool(r.get("fantasmino", False))]
-                    ghost_list = ", ".join(ghosts) if ghosts else "?"
-                    events.append((float(g), f"G{g} — 🐔👻 CASH OUT con POLLO {loser} + FANTASMA {ghost_list}", imp_val, "cashout_pollofantasma"))
+                        loser = pollo_name.get(g, "")
+                        ghosts = [str(r["giocatore"]) for _, r in day.iterrows() if bool(r.get("fantasmino", False))]
+                        ghost_list = ", ".join(ghosts) if ghosts else "?"
+                        events.append((float(g) + 0.3, f"G{g} — 🐔👻 CASH OUT con POLLO {loser} + FANTASMA {ghost_list}", imp_val, "cashout_pollofantasma"))
 
                 elif flag == "CASH_POLLO":
-                    loser = pollo_name.get(g, "")
-                    events.append((float(g), f"G{g} — 🐔 CASH OUT con POLLO {loser}", imp_val, "cashout_pollo"))
+                        loser = pollo_name.get(g, "")
+                        events.append((float(g) + 0.3, f"G{g} — 🐔 CASH OUT con POLLO {loser}", imp_val, "cashout_pollo"))
 
                 elif flag == "CASH_ALL_WIN":
-                    events.append((float(g), f"G{g} — 🪙 CASH OUT TUTTI VINCENTI 🪙", imp_val, "cashout_allwin"))
+                    events.append((float(g) + 0.3, f"G{g} — 🪙 CASH OUT TUTTI VINCENTI 🪙", imp_val, "cashout_allwin"))
 
                 else:
-                    events.append((float(g), f"G{g} — 🪙 CASH OUT QUASI TUTTI VINCENTI", imp_val, "cashout"))
+                        events.append((float(g) + 0.3, f"G{g} — 🪙 CASH OUT QUASI TUTTI VINCENTI", imp_val, "cashout"))
             
             else:
                 # === Vincite (manuali) ===
@@ -1575,55 +2821,70 @@ def compute_all(df, fino_a=None, ricariche=None, cashouts=None):
                 if vm > 0:
                     if giornata_flag.get(g) == "ALL_WIN":
                         events.append((
-                            float(g)+0.1,
+                            float(g)+0.3,
                             f"G{g} — 🪙 TUTTI VINCENTI: {eur(vm)}",
                             vm,
                             "allwin"
                         ))
                     elif giornata_flag.get(g) == "QUASI_ALL_WIN":
                         events.append((
-                            float(g)+0.1,
+                            float(g)+0.3,
                             f"G{g} — 🥈 I fanta Vincenti (4V + 1👻): {eur(vm)}",
                             vm,
                             "quasiwin"
                         ))
                     else:
                         events.append((
-                            float(g)+0.1,
+                            float(g)+0.3,
                             f"G{g} — 🪙 Vincita: {eur(vm)}",
                             vm,
                             "win"
                         ))
 
-                
-                            # ricariche
-                            
-    for k, vals in (ricariche or {}).items():
+                                            
+    # RICARICHE (💸 con nomi corretti)
+    _ric_source = ricariche.get("movimenti", ricariche) if isinstance(ricariche, dict) else ricariche
+    for k, vals in (_ric_source or {}).items():
         try:
             imp_list = vals.get("importi", []) if isinstance(vals, dict) else vals
             players = vals.get("players", []) if isinstance(vals, dict) else []
-
             players_str = f" ({', '.join(players)})" if players else ""
 
             if isinstance(k, str) and "/" in k:
+                # chiave = data (es. "05/10/25")
                 for imp in imp_list:
                     events.append((
                         k,
-                        f"{k} — 💩 ricarica{players_str}",
+                        f"{k} — 💸 Ricarica{players_str}",
                         float(imp),
                         "topup_date"
                     ))
             else:
+                # chiave = numero di giornata (es. 6)
                 key = float(k)
                 for i, imp in enumerate(imp_list):
                     events.append((
-                        key + i * 0.01,  # piccolo offset per distinguere ricariche multiple
-                        f"RG{str(k).replace('.', ',')} — 💩 ricarica{players_str}",
+                        key + i * 0.01,  # offset per ricariche multiple nella stessa giornata
+                        f"RG{str(k).replace('.', ',')} — 💸 Ricarica{players_str}",
                         float(imp),
                         "topup"
                     ))
         except Exception:
             continue
+
+                # === FILTRO EVENTI IN BASE ALLA GIORNATA SELEZIONATA (fino_a) ===
+    try:
+        if fino_a is not None:
+            fino_a_val = float(fino_a)
+            # Teniamo anche gli eventi leggermente successivi (es. +0.1)
+            events = [
+                ev for ev in events
+                if not (
+                    isinstance(ev[0], (int, float)) and ev[0] > fino_a_val + 0.4                )
+            ]
+    except Exception:
+        pass
+
 
 
     # ordina: numerici per primi, poi date
@@ -1665,22 +2926,31 @@ def compute_all(df, fino_a=None, ricariche=None, cashouts=None):
         # numerico (giornata)
         x_val = float(key)
         last_num_x = x_val
-        g_int = int(round(x_val + 0.4))
-        
+
+        # 🔹 Mantiene il numero di giornata coerente con l’evento (senza sballare VG8/VG9)
+        #    - Stake → g - 0.4
+        #    - Ricariche → g + 0.01
+        #    - Vincite / Cash-out → g + 0.3
+        #    Tutti restano etichettati nella stessa giornata (es. G7, RG7, VG7)
+        g_int = max(1, min(int(round(x_val)), max_len))
+
+                
         # Se la ricarica è una lista di importi → somma
         if isinstance(amt, list):
             amt = sum(amt)
             
         if kind in ("topup", "topup_date"):
-            # Ricarica numerica → RG#
+            # Mantiene l'etichetta originale con 💸 e nomi giocatori
             x_label = f"RG{str(x_val).replace('.', ',')}"
             mov_rows.append({
                 "Giornata": x_label,
-                "Movimento": f"{x_label} — Ricarica",
+                "Movimento": label,  # usa la label già completa (💸 + nomi)
                 "Importo": eur(amt),
                 "Cassa dopo €": eur(cur),
                 "Tipo": kind
             })
+
+
         elif kind in _KIND_VG:
             # Vincita o cash-out → VG#
             x_label = f"VG{g_int}"
@@ -1969,7 +3239,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-            # Modalità  Utente/Amministratore
+                # Modalità  Utente/Amministratore
+            
             
 with st.sidebar:
     st.subheader("🧭 Modalità")
@@ -2201,13 +3472,24 @@ if is_admin:
                         st.session_state["manual_wins"].pop(giornata, None)
                         st.info(f"Nessuna vincita impostata per G{giornata}.")
                         save_all()  # <— AGGIUNTA
+
                     else:
+                        # ✅ Salvataggio vincita
                         wv = float(win_txt.replace(",", "."))
                         st.session_state.setdefault("manual_wins", {})[giornata] = round(wv, 2)
                         st.success(f"Vincita per G{giornata}: {eur(wv)} €")
                         save_all()  # <— AGGIUNTA
+
+                        # 🔹 Imposta automaticamente il flag ALL_WIN se tutti gli esiti sono "V"
+                        day_df = df[df["giornata"] == giornata]
+                        if not day_df.empty:
+                            esiti = day_df["esito"].dropna().tolist()
+                            if len(esiti) == 5 and all(e == "V" for e in esiti):
+                                st.session_state.setdefault("giornata_flag", {})[giornata] = "ALL_WIN"
+
                 except Exception:
                     st.error("Valore non valido. Usa punto o virgola come separatore decimale.")
+
 
             # Perdita Pollo manuale
             st.subheader("🐔 Mancata vincita/Danno economico per Pollo")
@@ -2315,34 +3597,6 @@ if is_admin:
         
     cS,cR=st.columns(2)
 
-st.divider()
-
-# Slider (sportivo)
-ultima = 1
-for g in sorted(df["giornata"].unique()):
-    # Se la giornata ha tutti gli esiti compilati, la consideriamo completata
-    if not df[df["giornata"] == g]["esito"].isna().any():
-        ultima = g
-
-# 🔹 Memorizza e ricarica automaticamente l’ultima giornata completata
-# ✅ Inizializza solo la prima volta, poi lascia libertà all’utente
-if "slider_fino_a" not in st.session_state:
-    st.session_state["slider_fino_a"] = ultima
-else:
-    # Aggiorna solo se è comparsa una nuova giornata completata
-    if ultima > st.session_state["slider_fino_a"]:
-        st.session_state["slider_fino_a"] = ultima
-
-fino_a = st.slider(
-    "Mostra la situazione aggiornata fino alla giornata n°",
-    1,
-    NUM_GIORNATE,
-    value=st.session_state["slider_fino_a"],
-    key=None  # rimosso: così non forza il reset automatico
-)
-
-# Aggiorna lo stato solo se l’utente muove la barra
-st.session_state["slider_fino_a"] = fino_a
 
 
 # Calcoli
@@ -2425,1079 +3679,314 @@ if not df_mov.empty and "Tipo" in df_mov.columns:
 
 
 
-                    # ===== CELEBRAZIONI =====
-                
+# ===== CELEBRAZIONI =====
 from streamlit_extras.let_it_rain import rain
+
 
 def celebrate_allwin(g, euro):
-    import random
-    st.balloons()
-    st.markdown("""
-    
-    <style>
-    .emoji-rain {
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        pointer-events: none; z-index: 9999; overflow: hidden;
-    }
-    .emoji {
-        position: absolute; top: -2em; font-size: 2em;
-        animation: fall 6s linear forwards;   /* ⬅ dura 6 secondi */
-    }
-    @keyframes fall {
-        to { transform: translateY(110vh) rotate(360deg);}
-    }
-    .emoji:nth-child(1) { left: 10%; animation-duration: 4s; }
-    .emoji:nth-child(2) { left: 25%; animation-duration: 5s; }
-    .emoji:nth-child(3) { left: 40%; animation-duration: 6s; }
-    .emoji:nth-child(4) { left: 55%; animation-duration: 4.5s; }
-    .emoji:nth-child(5) { left: 70%; animation-duration: 5.5s; }
-    .emoji:nth-child(6) { left: 85%; animation-duration: 6.5s; }
-    </style>
-    
-    <div class="emoji-rain">
-        <div class="emoji">🎉</div>
-        <div class="emoji">🪙</div>
-        <div class="emoji">✨</div>
-        <div class="emoji">🎉</div>
-        <div class="emoji">🪙</div>
-        <div class="emoji">✨</div>
-    </div>
-    """, unsafe_allow_html=True)
-    st.markdown("<div class='cele-title'>THE CHAMPIONS</div>", unsafe_allow_html=True)
-    
-    st.markdown(
-        f"<div class='cele-sub'>Giornata {g} — Importo: "
-        f"<span style='font-size:28px'>{eur(euro)} €</span></div>",
-        unsafe_allow_html=True
-    )
+    # 5/5 senza cash-out — palloncini + oro
+    view = st.session_state.get("view", "")
+    selected_day = int(st.session_state.get("fino_a", 0))
+    flag = (st.session_state.get("giornata_flag") or {}).get(selected_day) or (giornata_flag or {}).get(selected_day)
 
-                    # ===== CELEBRAZIONI CASH OUT =====
-from streamlit_extras.let_it_rain import rain
+    # Mostra solo nella giornata giusta e nelle viste abilitate
+    if g != selected_day or flag != "ALL_WIN" or view not in ["filippoide", "classifica", "movimenti"]:
+        celebration_box.empty()
+        return
+
+    celebration_box.empty()
+    with celebration_box.container():
+        st.balloons()
+        st.markdown(
+            f"""
+            <div style="position:fixed;left:0;right:0;top:70px;text-align:center;z-index:9999;">
+            <div style="color:#FFD700;font-weight:900;font-size:40px;text-shadow:0 0 15px #FFD700">
+                THE CHAMPIONS
+            </div>
+            <div style="color:white;font-size:22px;">
+                Giornata {g} — Importo:
+                <span style="font-size:26px">{eur(euro)} €</span>
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
 
 def celebrate_cashout_allwin(g, euro):
-    
-    # Cash out con tutti vincenti → tema verde
-    if HAS_RAIN:
+    # Cash-out tutti vincenti — tema verde
+    view = st.session_state.get("view", "")
+    selected_day = int(st.session_state.get("fino_a", 0))
+    flag = (st.session_state.get("giornata_flag") or {}).get(selected_day) or (giornata_flag or {}).get(selected_day)
+
+    if g != selected_day or flag != "CASH_ALL_WIN" or view not in ["filippoide", "classifica", "movimenti"]:
+        celebration_box.empty()
+        return
+
+    celebration_box.empty()
+    with celebration_box.container():
         try:
             rain(emoji="🎉", font_size=48, falling_speed=5, animation_length=2)
             rain(emoji="🪙", font_size=46, falling_speed=6, animation_length=2)
-            rain(emoji="✨", font_size=40, falling_speed=7, animation_length=2)
         except Exception:
             pass
-    st.markdown("<div class='cele-title-green'>TUTTI VINCENTI — CASH OUT</div>", unsafe_allow_html=True)
-    st.markdown(
-        f"<div class='cele-sub'>Giornata {g} — Importo: "
-        f"<span style='font-size:26px'>{eur(euro)} €</span></div>",
-        unsafe_allow_html=True
-    )
-    
-# === Festeggiamenti Cash Out ===
-def celebrate_cashout(g, euro):
-    try:
-        # Cascata di banconote 💵
-        rain(emoji="💵", font_size=48, falling_speed=6, animation_length=3)
-        rain(emoji="💶", font_size=44, falling_speed=5, animation_length=3)
-    except Exception:
-        pass
-    
+        st.markdown(
+            f"""
+            <div style="position:fixed;left:0;right:0;top:70px;text-align:center;z-index:9999;">
+            <div style="color:#00FF00;font-weight:900;font-size:32px;text-shadow:0 0 12px #00FF00">
+                TUTTI VINCENTI — CASH OUT
+            </div>
+            <div style="color:white;font-size:20px;">
+                Giornata {g} — Importo:
+                <span style="font-size:24px">{eur(euro)} €</span>
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
 
 def celebrate_cashout_quasi(g, euro):
-    
-    # Cash out quasi tutti vincenti → tema argento
-    if HAS_RAIN:
+    # Cash-out quasi tutti vincenti — argento
+    view = st.session_state.get("view", "")
+    selected_day = int(st.session_state.get("fino_a", 0))
+    flag = (st.session_state.get("giornata_flag") or {}).get(selected_day) or (giornata_flag or {}).get(selected_day)
+
+    if g != selected_day or flag not in ("CASH_POLLO", "CASH_POLLO_FANTASMA") or view not in ["filippoide","classifica", "movimenti"]:
+        celebration_box.empty()
+        return
+
+    celebration_box.empty()
+    with celebration_box.container():
         try:
-            rain(emoji="🎉", font_size=48, falling_speed=5, animation_length=2)
-            rain(emoji="🪙", font_size=46, falling_speed=6, animation_length=2)
             rain(emoji="✨", font_size=40, falling_speed=7, animation_length=2)
+            rain(emoji="🪙", font_size=46, falling_speed=6, animation_length=2)
         except Exception:
             pass
-    st.markdown("<div class='cele-title-silver'>CASH OUT - QUASI TUTTI VINCENTI</div>", unsafe_allow_html=True)
-    st.markdown(
-        f"<div class='cele-sub-silver'>Giornata {g} — Importo: "
-        f"<span style='font-size:26px'>{eur(euro)} €</span></div>",
-        unsafe_allow_html=True
-    )
-
-# Mostra la celebrazione **solo** sulla giornata selezionata nello slider
-selected_day = int(fino_a)
-
-# Valori di supporto (senza dipendere solo da 'flag')
-cashouts = (st.session_state.get("cashouts", {}) or {})
-co_val = cashouts.get(selected_day)
-
-# Giorni con 5/5 vincenti (senza cash-out): {giornata: importo}
-_allwin_amount = {g: imp for g, imp in (giornate_all_win or [])}
-
-# Flag se presente (ma la logica sotto non ci si affida ciecamente)
-flag = (giornata_flag or {}).get(selected_day)  # "ALL_WIN" | "CASH_POLLO" | "POLLO" | None
-
-# Derivazioni robuste:
-has_cashout = (co_val is not None) and (co_val != 0)
-is_allwin_list = selected_day in _allwin_amount
-# Mappa precisa per evitare falsi positivi quando navighi altre giornate
-if has_cashout:
-    if flag == "CASH_ALL_WIN":
-        celebrate_cashout_allwin(selected_day, co_val)
-    elif flag in ("CASH_POLLO", "CASH_POLLO_FANTASMA"):
-        celebrate_cashout_quasi(selected_day, co_val)
-    elif flag and flag.startswith("CASH_"):
-        # altri cash-out (generico / con fantasma senza pollo, ecc.)
-        celebrate_cashout(selected_day, co_val)
-else:
-    if is_allwin_list:
-        # THE CHAMPIONS (oro, senza cash-out)
-        celebrate_allwin(selected_day, _allwin_amount[selected_day])
-        
-    # ==================== PANNELLO 1: FILIPPOIDE ====================
-
-st.markdown("<div class='panel'>", unsafe_allow_html=True)
-st.markdown("## 🧮 Classifica Storica <b>Filippoide</b>", unsafe_allow_html=True)
-
-# Tabella compatta con 👑 a MG78IT
-det_rows = []
-df_giorno = st.session_state.data[st.session_state.data["giornata"]==fino_a]
-for p in PLAYERS:
-    saldo = df_fili[p].iloc[fino_a] if fino_a < len(df_fili) else df_fili[p].iloc[-1]
-    try:
-        d_val = float(saldo - df_fili[p].iloc[fino_a-1]) if fino_a-1 >= 0 else float(saldo)
-    except:
-        d_val = 0.0
-    q_vis=""
-    qrow = df_giorno[df_giorno["giocatore"] == p]
-    if not qrow.empty:
-        q_raw = qrow.iloc[0].get("quota")
-        qf = _try_float(q_raw)
-        q_vis = "" if qf is None else fmt1(qf)
-    else:
-        q_vis = ""
-    display_name = p + (" 👑" if p=="MG78IT" else "")
-    det_rows.append({"GIOCATORE": display_name, "Saldo": saldo, "Quota giornata": q_vis, "Δ giornata": d_val})
-
-df_fili_rank = pd.DataFrame(det_rows).sort_values("Saldo", ascending=False).reset_index(drop=True)
-
-def paint_fili_compact(df_in):
-    # colonne numeriche/di contenuto da centrare
-    cols_nums = ["Saldo", "Quota giornata", "Δ giornata"]
-
-    def name_style(v):
-        base_name = str(v)
-        key = "MG78IT" if base_name.startswith("MG78IT") else base_name
-        fg = NAME_COLORS.get(key, ("#e9e9e9", None))[0]
-        # testo nome colorato e centrato
-        return f"color:{fg}; font-weight:800; text-align:center;"
-
-    # applichiamo stile al nome, poi forziamo il centramento di header e celle con set_table_styles
-    sty = df_in.style.applymap(name_style, subset=["GIOCATORE"])
-
-    # proprietà per le colonne numeriche: centratura e colore
-    sty = sty.set_properties(**{"text-align": "center"}, subset=cols_nums)
-    sty = sty.set_properties(**{"color": "#ffffff"}, subset=cols_nums)
-
-    # dimensioni/celle fisse (opzionale ma aiuta la leggibilità)
-    for c in cols_nums:
-        if c in df_in.columns:
-            sty = sty.set_properties(subset=[c], **{"min-width": "90px", "width": "90px", "max-width": "90px"})
-
-    # Forziamo l'allineamento centrato anche per header e per tutte le celle (più robusto)
-    sty = sty.set_table_styles([
-        {"selector": "th.col_heading", "props": [("text-align", "center")]},
-        {"selector": "td", "props": [("text-align", "center")]},
-    ], overwrite=False)
-
-    return sty
-
-
-st.dataframe(paint_fili_compact(df_fili_rank).format({"Saldo":fmt1,"Δ giornata":fmt1}),
-            hide_index=True, use_container_width=True)
-
-                    # Grafico Filippoide
-try:
-    if not df_fili.empty:
-        df_cut=df_fili[df_fili["Giornata"]<=fino_a].copy()
-        df_cut["Giornata"]=df_cut["Giornata"].astype(int)
-        if "MG78IT" in df_cut.columns:
-            df_cut = df_cut.rename(columns={"MG78IT":"MG78IT 👑"})
-        long=df_cut.melt(id_vars=["Giornata"], var_name="Giocatore", value_name="Valore")
-        alt_colors={"ANGEL":"#0B5ED7","GARIBALDI":"#FF00FF","CHRIS":"#19a319","MG78IT 👑":"#FFFFFF","FILLIP":"#00BFFF"}
-        ch=alt.Chart(long).mark_line(point=True).encode(
-            x=alt.X('Giornata:O', sort=None),
-            y=alt.Y('Valore:Q', title='Filippoide cumulata'),
-            color=alt.Color('Giocatore:N', scale=alt.Scale(domain=list(alt_colors.keys()), range=list(alt_colors.values()))),
-            tooltip=['Giornata','Giocatore','Valore']
-        ).properties(height=320)
-        st.altair_chart(ch, use_container_width=True)
-except Exception:
-    pass
-st.markdown("</div>", unsafe_allow_html=True)
-
-
-    # ==================== PANNELLO 2: POLLI & VOLPI ====================
-
-st.markdown("<div class='panel'>", unsafe_allow_html=True)
-st.markdown("### 🐔 Polli + Danno")
-
-# 🔹 Copia e ordina la tabella Polli+Danno
-df_polli_view = df_polli.copy()
-
-# Se esistono entrambe le colonne, ordina prima per POLLI e poi per DANNO numerico
-if "POLLI" in df_polli_view.columns and "DANNO" in df_polli_view.columns:
-    try:
-        # Estrae il numero principale dal campo Danno (es. "162,26 (G6:162,26)" → 162.26)
-        df_polli_view["DANNO_num"] = (
-            df_polli_view["DANNO"]
-            .astype(str)
-            .str.extract(r"([\d,\.]+)")[0]
-            .str.replace(",", ".", regex=False)
-            .astype(float)
-            .fillna(0)
+        st.markdown(
+            f"""
+            <div style="position:fixed;left:0;right:0;top:70px;text-align:center;z-index:9999;">
+              <div style="color:#C0C0C0;font-weight:900;font-size:30px;text-shadow:0 0 10px #C0C0C0">
+                CASH OUT — QUASI TUTTI VINCENTI
+              </div>
+              <div style="color:white;font-size:20px;">
+                Giornata {g} — Importo:
+                <span style="font-size:24px">{eur(euro)} €</span>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True
         )
 
-        df_polli_view = (
-            df_polli_view.sort_values(
-                by=["POLLI", "DANNO_num"],
-                ascending=[False, False],
-                kind="mergesort"
-            )
-            .drop(columns=["DANNO_num"])
-            .reset_index(drop=True)
+
+def celebrate_cashout(g, euro):
+    # Cash-out generico — pioggia di banconote
+    view = st.session_state.get("view", "")
+    selected_day = int(st.session_state.get("fino_a", 0))
+    flag = (st.session_state.get("giornata_flag") or {}).get(selected_day) or (giornata_flag or {}).get(selected_day)
+
+    if g != selected_day or not (flag and flag.startswith("CASH_")) or view not in ["filippoide", "classifica", "movimenti"]:
+        celebration_box.empty()
+        return
+
+    celebration_box.empty()
+    with celebration_box.container():
+        try:
+            rain(emoji="💶", font_size=44, falling_speed=5, animation_length=3)
+            rain(emoji="💵", font_size=46, falling_speed=6, animation_length=3)
+        except Exception:
+            pass
+        st.markdown(
+            f"""
+            <div style="position:fixed;left:0;right:0;top:70px;text-align:center;z-index:9999;">
+            <div style="color:#C0C0C0;font-weight:900;font-size:28px;text-shadow:0 0 8px #C0C0C0">
+                CASH OUT
+            </div>
+            <div style="color:white;font-size:18px;">
+                Giornata {g} — Importo:
+                <span style="font-size:22px">{eur(euro)} €</span>
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True
         )
-    except Exception as e:
-        st.warning(f"Impossibile ordinare Polli+Danno: {e}")
-else:
-    df_polli_view = df_polli.copy()
-
-# Mostra la tabella con formattazione
-st.dataframe(
-    paint_names_only(df_polli_view).set_properties(
-        subset=["POLLI"], **{"min-width": "60px", "width": "60px", "max-width": "60px", "text-align": "center"}
-    ).set_properties(
-        subset=["DANNO"], **{"min-width": "160px", "width": "160px", "max-width": "160px", "text-align": "center"}
-    ),
-    hide_index=True,
-    use_container_width=True
-)
-
-
-st.markdown("### 🦊 Volpi")
-df_volpi_view = (
-    df_volpi.copy()
-    .sort_values("VOLPI", ascending=False, kind="mergesort")
-    .reset_index(drop=True)
-)
-st.dataframe(
-    paint_names_only(df_volpi_view).set_properties(
-        subset=["VOLPI"], **{"min-width":"60px","width":"60px","max-width":"60px","text-align":"center"}
-    ),
-    hide_index=True,
-    use_container_width=True
-)
-st.markdown("</div>", unsafe_allow_html=True)
-
-
-# ==================== PANNELLO 3: CLASSIFICA GENERALE + LEGENDA + CALENDARIO ====================
-
-st.markdown("<div class='panel'>", unsafe_allow_html=True)
-st.markdown("### 🏆 Classifica generale")
-cols = [
-    "GIOCATORE", "Totale", "Punti base",
-    "Penalità quote basse",
-    "Bonus differenza quote", "Malus differenza quote",
-    "Bonus Volpe", "Malus Pollo", "Malus Pollo Fantasma",
-    "Bonus Champions", "Bonus Coraggio",
-    "Malus Fantasmino",
-    "Bonus Tutti Vincenti", "Malus Tutti Perdenti"
-]
-
-
-st.dataframe(
-    paint_names_only(pd.DataFrame(classifica)[cols]).format({
-        "Totale":fmt1,"Punti base":fmt1,
-        "Penalità quote basse":fmt1,
-        "Bonus differenza quote":fmt1,"Malus differenza quote":fmt1,
-        "Bonus Volpe":fmt1,"Malus Pollo":fmt1, "Malus Pollo Fantasma":fmt1,
-        "Bonus Champions":fmt1,
-        "Malus Fantasmino":fmt1,
-        "Bonus Coraggio":fmt1,
-        "Bonus Tutti Vincenti":fmt1,
-        "Malus Tutti Perdenti":fmt1,
-    }),
-    
-    hide_index=True,
-    use_container_width=True
-)
-
-                        # Grafico classifica generale
-try:
-    if not df_gen.empty:
-        df_gen_cut = df_gen[df_gen["Giornata"] <= fino_a].copy()
-        long = df_gen_cut.melt(id_vars=["Giornata"], var_name="Giocatore", value_name="Punti")
-
-        alt_colors = {
-            "ANGEL": "#0B5ED7",
-            "GARIBALDI": "#FF00FF",
-            "CHRIS": "#19a319",
-            "MG78IT": "#FFFFFF",
-            "FILLIP": "#00BFFF"
-        }
-
-        # Linee semi-trasparenti
-        ch_lines = alt.Chart(long).mark_line(opacity=0.85).encode(
-            x=alt.X('Giornata:O', sort=None),
-            y=alt.Y('Punti:Q', title='Classifica generale (progressione)',
-                scale=alt.Scale(zero=False, nice=True)),
-            color=alt.Color(
-                'Giocatore:N',
-                scale=alt.Scale(domain=list(alt_colors.keys()), range=list(alt_colors.values()))
-            ),
-            tooltip=['Giornata', 'Giocatore', 'Punti']
-        )
-
-                # ================== PALLINI CLASSIFICA ==================
-
-        # Identifica se ci sono parità di punteggio nella stessa giornata
-        long["same_score"] = long.groupby("Giornata")["Punti"].transform(lambda v: v.duplicated(keep=False))
-
-        # Calcolo rank per gestire le parità
-        base = alt.Chart(long).transform_window(
-            rank='row_number()',
-            sort=[alt.SortField('Giocatore', order='ascending')],
-            groupby=['Giornata', 'Punti']
-        )
-
-        # --- Pallini piccoli per tutti i giocatori ---
-        ch_points_single = base.mark_point(
-            filled=True, size=40, strokeWidth=1
-        ).encode(
-            x='Giornata:O',
-            y=alt.Y('Punti:Q', title='Classifica generale (progressione)',
-                scale=alt.Scale(zero=False, nice=True)),
-            color=alt.Color(
-                'Giocatore:N',
-                scale=alt.Scale(domain=list(alt_colors.keys()), range=list(alt_colors.values())),
-                legend=None
-            )
-        )
-
-        # --- Pallino centrale grande (solo se c'è parità) ---
-        ch_points_full = base.transform_filter('datum.same_score == true').mark_point(
-            filled=True, size=200, strokeWidth=2
-        ).encode(
-            x='Giornata:O',
-            y='Punti:Q',
-            color=alt.Color(
-                'Giocatore:N',
-                scale=alt.Scale(domain=list(alt_colors.keys()), range=list(alt_colors.values())),
-                legend=None
-            )
-        )
-
-        # --- Cerchi concentrici (solo se c'è parità) ---
-        ch_points_conc = base.transform_filter('datum.same_score == true && datum.rank > 1').mark_point(
-            filled=False, strokeWidth=4
-        ).encode(
-            x='Giornata:O',
-            y='Punti:Q',
-            size=alt.Size('rank:O', scale=alt.Scale(range=[130, 170, 210, 250, 290]), legend=None),
-            color=alt.Color(
-                'Giocatore:N',
-                scale=alt.Scale(domain=list(alt_colors.keys()), range=list(alt_colors.values())),
-                legend=None
-            )
-        )
-
-        # --- Combinazione finale ---
-        # Pallini piccoli sempre visibili,
-        # pallino grande e cerchi concentrici solo in caso di parità
-        ch = (ch_lines + ch_points_single + ch_points_full + ch_points_conc).properties(height=320)
-        st.altair_chart(ch, use_container_width=True)
-
-
-
-except Exception:
-    pass
-
-                        # Legenda (solo Punti)
-                        
-df_legenda = pd.DataFrame([
-    {"Sezione":"Punti base (1v1)","Regola":"Uno vince / uno perde","Valore":"3 (V) - 0 (P)"},
-    {"Sezione":"Punti base (1v1)","Regola":"Entrambi vincono","Valore":"2 a testa"},
-    {"Sezione":"Punti base (1v1)","Regola":"Entrambi perdono","Valore":"1 a testa"},
-
-    {"Sezione":"Bonus Coraggio",
-    "Regola":"Assegnato solo ai vincenti; posizione per quota (decrescente); soglia ≤ 1,50 → 0",
-    "Valore":"Temerario +1,10; Audace +0,80; Prudente +0,50; Braccino corto +0,30; Fifone +0,10"},
-
-    {"Sezione":"🚽 Penalità quota bassa (1,40–1,60)",
-    "Regola":"Si applica nei confronti diretti (V–P, V–V, P–P) ai giocatori che scelgono quote prudenti. "
-            "Il simbolo 🚽 indica scommesse troppo 'comode' o poco coraggiose.",
-    "Valore":"V vincente −1,5 / V–V −1 ciascuno / P–P −0,5 ciascuno"},
-
-    {"Sezione":"🤡 Penalità quota Ridiculus (<1,40)",
-    "Regola":"Si applica nei confronti diretti (V–P, V–V, P–P) ai giocatori che scelgono quote troppo basse o 'ridicole'. "
-            "Il simbolo 🤡 identifica la fascia più penalizzante.",
-    "Valore":"V vincente −2 / V–V −1,5 ciascuno / P–P −1 ciascuno"},
-
-    {"Sezione":"⚖️👍 Bonus differenza quote",
-    "Regola":"Assegnato al giocatore con la quota più alta nei casi V–V e V–P.",
-    "Valore":"+Δquote (max +3)"},
-
-    {"Sezione":"⚖️👎 Malus differenza quote",
-    "Regola":"Assegnato al giocatore con la quota più bassa (V–P) o più alta (P–P).",
-    "Valore":"−Δquote (max −3)"},
-
-    {"Sezione":"Tutti Vincenti (5V)",
-    "Regola":"Senza cash-out: +5/+4/+3/+2/+1 dalla quota più alta alla più bassa",
-    "Valore":"+5 / +4 / +3 / +2 / +1"},
-
-    {"Sezione":"Tutti Perdenti (5P)",
-    "Regola":"Quota più alta −1 … quota più bassa −5",
-    "Valore":"−1 / −2 / −3 / −4 / −5"},
-
-    {"Sezione":"🦊 Volpe (unico vincente)",
-    "Regola":"Quota più alta +6 … più bassa +2 (se quote uguali, conta la più favorevole)",
-    "Valore":"+6 / +5 / +4 / +3 / +2"},
-
-    {"Sezione":"🐔 Pollo (unico perdente)",
-    "Regola":"Quota più bassa −6 … più alta −2 (se quote uguali, conta la più favorevole)",
-    "Valore":"−6 / −5 / −4 / −3 / −2"},
-
-    {"Sezione":"Champions League","Regola":"Per ogni 'V' in giornata Champions","Valore":"+2 × quota"},
-    
-    {"Sezione":"👻 Fantasmino",
-    "Regola":"Mancata scommessa= -5. L’avversario: se V = +2, se P = +1 e subisce eventuali penalità per quote 🚽/🤡). "
-    ,
-    "Valore":"👻 −5 / Avversario +2 o +1"},
-    
-    {"Sezione":"Filippoide",
-    "Regola":"V: quota − 1 • P: −1 • 👻 Fantasmino: −1",
-    "Valore":"cumulata da giornata 0"},
-    ])
-
-st.markdown("### ℹ️ Legenda punti")
-
+ 
+        # ===== HOME PAGE ELEGANTE (pulsanti colorati + back funzionante) =====
 st.markdown("""
 <style>
-table {
-width: 100%;
-border-collapse: collapse;
-font-size: 1.1rem;
+
+/* Pulsante Back dorato */
+.back-btn {
+    background: linear-gradient(145deg, #3a3a3a, #1a1a1a);
+    border: 2px solid gold;
+    border-radius: 12px;
+    color: gold;
+    font-weight: 900;
+    padding: 0.7rem 1rem;
+    box-shadow: 0 0 14px rgba(255,215,0,0.5);
+    width: 220px;
+    margin-bottom: 10px;
 }
-th, td {
-border: 1px solid #444;
-padding: 8px 10px;
-text-align: center;
+.back-btn:hover {
+    background: linear-gradient(145deg, #444, #666);
+    box-shadow: 0 0 20px rgba(255,215,0,0.8);
 }
-th {
-background-color: #0a2a6b;
-color: white;
-font-weight: 900;
-text-transform: uppercase;
+
+.stApp { background-color: #000; }
+
+/* Titolo principale */
+h1 {
+    text-align: center;
+    color: #FFD700;
+    font-weight: 900;
+    text-shadow: 0 0 12px #ffcc33;
+    margin-bottom: 0.4rem;
 }
-tr:nth-child(even) { background-color: #111; }
-tr:nth-child(odd) { background-color: #1a1a1a; }
-tr:hover { background-color: #222; }
+.subtitle {
+    text-align: center;
+    color: #aaa;
+    font-size: 1rem;
+    margin-top: -10px;
+    margin-bottom: 1.2rem;
+}
+
+/* Pulsanti colorati */
+div.stButton > button {
+    border: none;
+    border-radius: 16px;
+    color: white;
+    font-weight: 800;
+    text-align: center;
+    padding: 1.2rem 0.8rem;
+    width: 100%;
+    max-width: 240px;
+    cursor: pointer;
+    font-size: 1.05rem;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    transition: all 0.2s ease-in-out;
+}
+
+/* Colori diversi per ogni pulsante */
+button[data-name="Filippoide"] { background: linear-gradient(145deg, #3a6186, #89253e); }
+button[data-name="KillBet Arena"] { background: linear-gradient(145deg, #283E51, #485563); }
+button[data-name="Giornate"] { background: linear-gradient(145deg, #56ab2f, #a8e063); }
+button[data-name="Legenda"] { background: linear-gradient(145deg, #373B44, #4286f4); }
+button[data-name="Polli & Volpi"] { background: linear-gradient(145deg, #ff5f6d, #ffc371); }
+button[data-name="Cassa"] { background: linear-gradient(145deg, #F7971E, #FFD200); }
+
+div.stButton > button:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 0 15px gold;
+}
+
+/* Pulsante Back */
+.back-btn {
+    background: linear-gradient(145deg, #3a3a3a, #1a1a1a);
+    border: 2px solid gold;
+    border-radius: 12px;
+    color: gold;
+    font-weight: 900;
+    padding: 0.7rem 1rem;
+    box-shadow: 0 0 14px rgba(255,215,0,0.5);
+    width: 220px;
+    margin-bottom: 10px;
+}
+.back-btn:hover {
+    background: linear-gradient(145deg, #444, #666);
+    box-shadow: 0 0 20px rgba(255,215,0,0.8);
+}
+
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown(
-    df_legenda.to_html(index=False, escape=False),
-    unsafe_allow_html=True
-)
+
+# ===== GESTIONE SCROLLBAR (Home senza scroll, sezioni con scroll) =====
+st.markdown("""
+<style>
+
+/* Blocca totalmente lo scroll e nasconde la barra nella Home */
+[data-testid="stAppViewBlockContainer"] > div:first-child {
+    overflow: hidden !important;
+    height: 100vh !important;
+}
+
+/* Riattiva lo scroll SOLO quando sono visibili i pannelli */
+[data-testid="stAppViewBlockContainer"] > div:first-child:has(div.panel) {
+    overflow-y: auto !important;
+    height: auto !important;
+}
+
+/* Nasconde qualsiasi scrollbar residua */
+body::-webkit-scrollbar, 
+[data-testid="stAppViewBlockContainer"]::-webkit-scrollbar {
+    display: none !important;
+}
+
+/* Disabilita scroll anche sul body principale */
+html, body {
+    overflow: hidden !important;
+}
+
+</style>
+""", unsafe_allow_html=True)
 
 
-                # --- Rendering card giornata ---
-                
-def giornata_card_html(g, subdf):
-    # Importo da mostrare
-    amount_html = ""
-    imp_val = None
+# === Protezione anti-reset view ===
+if "view" not in st.session_state:
+    st.session_state.view = "classifica"
 
-    # 1) Cash-out vince sempre la priorità
-    if g in cashout_days:
-        imp_val = st.session_state.get("cashouts", {}).get(g)
+# ===== ROUTER =====
 
-    # 2) Nessun cash-out → se la giornata è ALL_WIN e hai messo una vincita manuale, mostra quella
-    elif (giornata_flag or {}).get(g) == "ALL_WIN":
-        mv = (st.session_state.get("manual_wins", {}) or {}).get(g)
-        if mv is not None:
-            imp_val = float(mv)
+device = st.session_state.get("device", "unified")
 
-
-    # Recupera lo stake salvato in quella giornata
-    day_stake = None
-    try:
-        day_stake = df[df["giornata"] == g]["stake"].iloc[0]
-    except Exception:
-        day_stake = None
-
-    # Flag della giornata
-    flag = (giornata_flag or {}).get(g)
-
-    # Default
-    base_class = "card"
-    title = f"Giornata {g}"
-
-    if flag == "CASH_ALL_WIN":
-        base_class = "card card-cashout"
-        title = f"💸 Giornata {g} — CASH OUT TUTTI VINCENTI"
-        try:
-            # Estraggo solo i vincenti reali della giornata
-            subset = df[df["giornata"] == g]
-            subset = subset[subset["esito"] == "V"]
-
-            # Mappa {giocatore: quota}
-            quote_map = subset.groupby("giocatore")["quota"].first().to_dict()
-
-            if len(quote_map) == 5:
-                # Ordina le quote in modo decrescente
-                sorted_players = sorted(quote_map.items(), key=lambda x: x[1], reverse=True)
-                bonus_map = {
-                    sorted_players[0][0]: 5,
-                    sorted_players[1][0]: 4,
-                    sorted_players[2][0]: 3,
-                    sorted_players[3][0]: 2,
-                    sorted_players[4][0]: 1
-                }
-
-                # Applica i bonus sommando ai punteggi cumulativi (non azzera!)
-                for pl, bonus_val in bonus_map.items():
-                    # Recupera punteggio precedente
-                    prev_pts = df_gen.loc[df_gen["Giornata"] == g - 1, pl].iloc[-1] if g > 1 and not df_gen.empty else 0
-                    # Aggiorna la colonna Bonus Tutti Vincenti (se esiste)
-                    df.loc[df["giocatore"] == pl, "bonus_allwin"] = (
-                        df.get("bonus_allwin", 0) + bonus_val
-                    )
-                    # Aggiorna la classifica generale mantenendo la progressione
-                    df_gen.loc[df_gen["Giornata"] == g, pl] = prev_pts + bonus_val
-
-        except Exception as e:
-            st.warning(f"Errore nel calcolo bonus CASH OUT TUTTI VINCENTI: {e}")
-        
-    elif flag == "CASH_FANTASMA":
-        base_class = "card card-cashfantasma"
-        title = f"👻 Giornata {g} — CASH OUT con FANTASMA{amount_html}"
-        
-    elif flag == "CASH_POLLO":
-        base_class = "card card-cashpollo"
-        loser = color_span(pollo_name.get(g, "")) or ""
-        title = f"🐔 Giornata {g} — CASH OUT con POLLO: {loser}{amount_html}"
-    
-    elif flag == "CASH_OUT":  # generico
-        base_class = "card card-cashout"
-        title = f"🪙 Giornata {g} — CASH OUT QUASI TUTTI VINCENTI{amount_html}"
-    
-    elif flag == "QUASI_ALL_WIN":
-        base_class = "card card-quasiwin"
-        title = f"🥈 Giornata {g} — I Fanta Vincenti 👻 (Quasi Tutti Vincenti)"
-    
-    elif flag == "ALL_WIN":
-        base_class = "card card-allwin"
-        title = f"🪙🪙🪙🪙🪙 Giornata {g} — TUTTI VINCENTI"
-    
-    elif flag in ("POLLO", "POLLO_FANTASMA"):
-        loser = color_span(pollo_name.get(g, ""))
-        base_class = "card card-pollo"
-        if flag == "POLLO_FANTASMA":
-            emoji, label = "🐔👻", "POLLO FANTASMA"
-        else:
-            emoji, label = "🐔", "POLLO"
-
-        # Danno economico SOLO da “Perdita Pollo” (manuale)
-        man_loss = (st.session_state.get("manual_losses", {}) or {}).get(g)
-        title = f"{emoji} Giornata {g} — {label}: {loser}"
-        if man_loss is not None:
-            title += f" — Danno: <span style='font-weight:900'>{eur(man_loss)} €</span>"
-
-        # Mostra sempre lo stake del giorno se presente
-        if day_stake not in (None, "", "null"):
-            title += (
-                f"<div style='text-align:right; color:#ff3333; font-weight:900;'>"
-                f"💶 Giocata: {eur(day_stake)} €</div>"
-            )
-
-                    
-    elif flag == "VOLPE":
-        base_class = "card card-volpe"
-        winner = color_span(volpe_name.get(g, "")) or ""
-        title = f"🦊 Giornata {g} — VOLPE: {winner}"
-        
-    elif flag == "ALL_LOSE":
-        base_class = "card card-alllose"
-        title = f"<span style='font-size:26px;'>💩💩💩💩💩</span> Giornata {g} — TUTTI PERDENTI"
-
-    else:
-        base_class = "card"
-        title = f"Giornata {g}"
-
-        # --- SOLO per ALL_WIN aggiungo importo e stake nel titolo ---
-    if flag == "ALL_WIN":
-        if imp_val not in (None, "", "null"):
-            title += f"<div style='font-weight:900'>{eur(imp_val)} €</div>"
-        if day_stake not in (None, "", "null"):
-            title += (
-                f"<div style='text-align:right; color:#ff3333; font-weight:900;'>"
-                f"💶 Giocata: {eur(day_stake)} €</div>"
-            )    
-
-    # Variabili di supporto
-    champs = st.session_state.get("champions_days", [])
-    cashouts = (st.session_state.get("cashouts", {}) or {})
-
-    # Importo del cash out
-    co_raw = cashouts.get(g, None)
-    co_val = _try_float(co_raw)
-    co_val_f = co_val if co_val is not None else 0.0
-    has_cashout = (co_val_f > 0)
-
-    amount_html = ""
-    if has_cashout:
-        amount_html = f" — Importo: <span style='font-weight:900'>{eur(co_val_f)} €</span>"
-
-    # Assegna classi e titoli
-    if (g in champs) and (not has_cashout):
-        base_class = 'card card-champday'
-        title = f'🏆🏆🏆🏆🏆 Giornata Champions {g}'
-
-    elif has_cashout:
-        if flag == "CASH_FANTASMA":
-            base_class = "card card-cashfantasma"
-            title = f"👻 Giornata {g} — CASH OUT con FANTASMA{amount_html}"
-
-        elif flag == "CASH_POLLO_FANTASMA":
-            base_class = "card card-cashpollofantasma"
-            loser = color_span(pollo_name.get(g, ""))
-            title = f"🐔👻 Giornata {g} — CASH OUT con POLLO + FANTASMA: {loser}{amount_html}"
-
-        elif flag == "CASH_POLLO":
-            base_class = "card card-cashpollo"
-            loser = color_span(pollo_name.get(g, ""))
-            title = f"🐔 Giornata {g} — CASH OUT con POLLO: {loser}{amount_html}"
-
-        else:  # cash out generico
-            base_class = "card card-cashout"
-            title = f"💸 Giornata {g} — CASH OUT{amount_html}"
-
-        # In tutti i tipi di cash out mostriamo anche lo stake
-        if day_stake not in (None, "", "null"):
-            title += (
-                f"<div style='text-align:right; color:#ff3333; font-weight:900;'>"
-                f"💶 Giocata: {eur(day_stake)} €</div>"
-            )
-
-    extras = giorno_player_extra.get(g, {})
-
-
-                    # --- Extra (bonus/malus con icone) ---
-                    
-    def extra_for(player_name):
-        ICON = {
-            "fox": "🦊",
-            "hen": "🐔",
-            "hen_ghost": "🐔👻",
-            "ghost": "👻",
-            "champ": "✖️2",
-            "allwin": "🏅",
-            "alllose": "💩",
-        }
-        def courage_emoji(why):
-            w = (why or "").lower()
-            if "temerario" in w: return "🦁"
-            if "audace" in w:    return "💪"
-            if "prudente" in w:  return "🐢"
-            if "braccino" in w:  return "🤏"
-            if "fifone" in w:    return "🐇"
-            return "🔥"
-        out = ""
-        fg = NAME_COLORS.get(player_name, ("#e9e9e9", None))[0]
-        for kind, pts, why in extras.get(player_name, []):
-            emoji = courage_emoji(why) if kind == "courage" else ICON.get(kind, "")
-            if pts is None:
-                out += f"<span class='chip' style='color:{fg}'>{emoji} <small>({why})</small></span>"
-            else:
-                sign = "+" if float(pts) >= 0 else ""
-                out += f"<span class='chip' style='color:{fg}'>{emoji} {sign}{fmt1(pts)} <small>({why})</small></span>"
-        return out
-
-                            # --- Match 1vs1 ---
-
-    def row(partita):
-        if not (subdf["partita"] == partita).any():
-            return ""
-        p = subdf[subdf["partita"] == partita].iloc[0]
-        casa_name = p["CASA"]
-        osp_name = p["OSPITE"]
-
-        q_casa = f" ({float(p['Q_CASA']):.2f})" if p.get("Q_CASA") not in (None, "") else ""
-        q_osp = f" ({float(p['Q_OSP']):.2f})" if osp_name and p.get("Q_OSP") not in (None, "") else ""
-
-        def _is_ghost(name):
-            return any(k == "ghost" for (k, _, _) in extras.get(name, []))
-        if _is_ghost(casa_name):
-            q_casa = " <span class='qbr'>👻</span>"
-        if osp_name and _is_ghost(osp_name):
-            q_osp = " <span class='qbr'>👻</span>"
-
-        casa_col = NAME_COLORS.get(casa_name, ("#e9e9e9", None))[0]
-        osp_col = NAME_COLORS.get(osp_name, ("#e9e9e9", None))[0] if osp_name else "#e9e9e9"
-        casa = f"<span style='color:{casa_col};font-weight:800'>{casa_name}{q_casa}</span>"
-        osp = f"<span style='color:{osp_col};font-weight:800'>{osp_name}{q_osp}</span>" if osp_name else ""
-
-        def esito_display(esito, is_ghost):
-            if is_ghost:
-                return "👻"
-            return esito_colored(esito)
-
-        e_c = esito_display(p["E_CASA"], p.get("F_CASA", False))
-        e_o = esito_display(p["E_OSP"], p.get("F_OSP", False))
-
-        def fval(key):
-            try: return float(p.get(key, 0) or 0)
-            except Exception: return 0.0
-
-        tot_casa = fval("BASE_CASA") + fval("B_CASA") + fval("M_CASA") + fval("HALF_CASA")
-        tot_osp = fval("BASE_OSP") + fval("B_OSP") + fval("M_OSP") + fval("HALF_OSP")
-        for _, pts, _ in extras.get(casa_name, []):
-            if pts: tot_casa += float(pts)
-        for _, pts, _ in extras.get(osp_name, []):
-            if pts: tot_osp += float(pts)
-
-        def fmt_result(v):
-            return str(int(v)) if float(v).is_integer() else f"{v:.2f}"
-        risultato = (
-            f"<div class='es'><b>Risultato goliardico:</b> "
-            f"<span style='color:{casa_col}'>{casa_name} {fmt_result(tot_casa)}</span> – "
-            f"<span style='color:{osp_col}'>{fmt_result(tot_osp)} {osp_name}</span></div>"
+if device == "unified":
+    if st.session_state.view == "home":
+        st.markdown(
+            "<h1>⚡ KillBet League 2025-2026 ⚡</h1>"
+            "<p class='subtitle'>L'app ufficiale del torneo più goliardico dell'anno 🏆</p>",
+            unsafe_allow_html=True
         )
 
-        def chip(label, val, color, icon=""):
-            if val == 0 or val == "" or val is None: return ""
-            sign = "+" if float(val) > 0 else ""
-            return f"<span class='chip' style='color:{color}'>{icon} {label}: {sign}{fmt1(val)}</span>"
+        tiles = [
+            {"icon": "📊", "label": "Filippoide", "view": "filippoide"},
+            {"icon": "🏆", "label": "KillBet Arena", "view": "classifica"},
+            {"icon": "📅", "label": "Giornate", "view": "giornate"},
+            {"icon": "📘", "label": "Legenda", "view": "legenda"},
+            {"icon": "🐔🦊", "label": "Polli & Volpi", "view": "polli_volpi"},
+            {"icon": "💰", "label": "Cassa", "view": "movimenti"},
+        ]
 
-        # --- Sezione visualizzazione punteggi casa/ospite con penalità aggiornate ---
-        # Determina la descrizione corretta del tipo di penalità in base alla quota
-        def label_penalita(q):
-            if q is None:
-                return None
-            try:
-                qf = float(q)
-                if qf < 1.40:
-                    return "🤡 Penalità quota Ridiculus"
-                elif 1.40 <= qf <= 1.60:
-                    return "🚽 Penalità quota bassa"
-            except Exception:
-                return None
-            return None
-
-        # Determina il simbolo e il testo dinamico
-        pen_casa_label = label_penalita(p.get("Q_CASA"))
-        pen_osp_label = label_penalita(p.get("Q_OSP"))
-
-        casa_steps = (
-            f"<div class='steps'>"
-            f"{chip('punti base', fval('BASE_CASA'), casa_col, '🎯')}"
-            f"{chip('Bonus diff. quote', fval('B_CASA'), casa_col, '⚖️👍')}"
-            f"{chip(pen_casa_label if pen_casa_label else '—', fval('HALF_CASA'), casa_col, '') if pen_casa_label else ''}"
-            f"{chip('malus diff.quote', fval('M_CASA'), casa_col, '⚖️👎')}"
-            f"{extra_for(casa_name)}"
-            f"</div>"
-            f"<span class='chip strong' style='color:{casa_col}'>💰 Totale punti giornata di {casa_name.upper()}: {fmt1(tot_casa)}</span>"
-        )
-
-        osp_steps = ""
-        if osp_name:
-            osp_steps = (
-                f"<div class='steps'>"
-                f"{chip('punti base', fval('BASE_OSP'), osp_col, '🎯')}"
-                f"{chip('Bonus diff. quote', fval('B_OSP'), osp_col, '⚖️👍')}"
-                f"{chip(pen_osp_label if pen_osp_label else '—', fval('HALF_OSP'), osp_col, '') if pen_osp_label else ''}"
-                f"{chip('malus diff.quote', fval('M_OSP'), osp_col, '⚖️👎')}"
-                f"{extra_for(osp_name)}"
-                f"</div>"
-                f"<span class='chip strong' style='color:{osp_col}'>💰 Totale punti giornata di {osp_name.upper()}: {fmt1(tot_osp)}</span>"
-            )
-
-
-        return (
-            f"<div class='riga'>"
-            f"<div class='vs'>{casa} vs {osp}</div>"
-            f"<div class='es'>{e_c} – {e_o}</div>"
-            f"{risultato}"
-            f"{casa_steps}{osp_steps}"
-            f"</div>"
-        )
-
-                    # --- Giocatore a riposo 🛌 ---
-                    
-    def row_riposo(player_name):
-        fg = NAME_COLORS.get(player_name, ("#e9e9e9", None))[0]
-        tot = 0.0
-        for _, pts, _ in extras.get(player_name, []):
-            if pts:
-                try: tot += float(pts)
-                except: pass
-        chips = extra_for(player_name)
-        total_chip = (
-            f"<span class='chip strong' style='color:{fg}'>"
-            f"💰 Totale punti giornata di {player_name.upper()}: {fmt1(tot)}</span>"
-        )
-        return (
-            f"<div class='riga'>"
-            f"<div class='vs'><span style='color:{fg};font-weight:800'>{player_name} 🛌 — RIPOSO</span></div>"
-            f"<div class='steps'>{chips}</div>"
-            f"{total_chip}"
-            f"</div>"
-        )
-
-    # --- RIP dal DF ---
-    rip_html = ""
-    if (subdf["partita"] == "RIP").any():
-        rp = subdf[subdf["partita"] == "RIP"].iloc[0]
-        try:
-            row_rip_df = st.session_state.data[
-                (st.session_state.data["giornata"] == g) & 
-                (st.session_state.data["slot"] == "RIP")
-            ].iloc[0]
-            is_ghost_rip = bool(row_rip_df.get("fantasmino", False))
-        except Exception:
-            is_ghost_rip = False
-
-        name_txt = rp["CASA"]
-        rip_col = NAME_COLORS.get(name_txt, ('#e9e9e9', None))[0]
-
-        if is_ghost_rip:
-            qtxt = f" <span style='color:{rip_col};font-weight:800'>👻</span>"
-            e_c = "👻"
-        else:
-            q_val = _try_float(rp.get("Q_CASA"))
-            qtxt = f" <span style='color:{rip_col}'>({fmt1(q_val)})</span>" if q_val is not None else ""
-            e_c = esito_colored(rp["E_CASA"])
-
-        name = color_span(name_txt)
-
-
-        # Usa la stessa logica degli altri giocatori (extra_for)
-        rip_extra = extra_for(name_txt)
-        
-        # Calcolo totale punti del RIP dal giorno_player_extra
-        tot_rip = 0.0
-        for kind, pts, why in extras.get(name_txt, []):
-            if pts is not None:
-                try:
-                    tot_rip += float(pts)
-                except:
-                    pass
-
-        # Costruzione finale del riposo con chip e totale
-        rip_html = (
-            f"<div class='rip'><b style='color:{GOLD}'>RIPOSO</b>: "
-            f"<span class='ripname'>{name}</span>{qtxt} — Esito: <b>{e_c}</b>"
-            f"<div class='steps'>{rip_extra}</div>"
-            f"<span class='chip strong' style='color:{NAME_COLORS.get(name_txt,('#e9e9e9',None))[0]}'>"
-            f"💰 Totale punti giornata di {name_txt.upper()}: {fmt1(tot_rip)}</span>"
-            f"</div>"
-        )
-
-                        # --- Corpo card finale ---
+        # Mostra i pulsanti in 3x2
+        rows = [tiles[:3], tiles[3:]]
+        for r_i, row in enumerate(rows):
+            cols = st.columns(3)
+            for c_i, t in enumerate(row):
+                with cols[c_i]:
+                    label = f"{t['icon']} {t['label']}"
+                    if st.button(label, key=f"home_btn_{r_i}_{c_i}", use_container_width=True):
+                        st.session_state.view = t["view"]
+                        st.rerun()
                         
-    card_body = f"{row('1')}{row('2')}{rip_html}"
-    return f"<div class='{base_class}'><div class='card-head'>{title}</div><div class='card-body'>{card_body}</div></div>"
-
-def subdf_for_g(g):
-    sub=df_tab[df_tab["giornata"]==g]
-    if sub.empty:
-        f=FIXTURES[g-1]
-        rows=[{"giornata":g,"partita":"1","CASA":f["CASA1"],"OSPITE":f["OSP1"],"Q_CASA":None,"Q_OSP":None,"E_CASA":None,"E_OSP":None},
-            {"giornata":g,"partita":"2","CASA":f["CASA2"],"OSPITE":f["OSP2"],"Q_CASA":None,"Q_OSP":None,"E_CASA":None,"E_OSP":None},
-            {"giornata":g,"partita":"RIP","CASA":f["RIP"],"OSPITE":"","Q_CASA":None,"Q_OSP":None,"E_CASA":None,"E_OSP":None}]
-        return pd.DataFrame(rows)
-    return sub
-
-CARDS_PER_ROW=4
-for start in range(1, NUM_GIORNATE+1, CARDS_PER_ROW):
-    cols=st.columns(CARDS_PER_ROW)
-    for i,col in enumerate(cols):
-        g=start+i
-        if g>NUM_GIORNATE: break
-        with col: st.markdown(giornata_card_html(g, subdf_for_g(g)), unsafe_allow_html=True)
-st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        # Pulsante Back dorato centrato e funzionante con un solo click
+        col_back = st.columns([1, 2, 1])[1]
+        with col_back:
+            if st.button("🔙 Torna alla Home", key="back_btn_home", use_container_width=True):
+                st.session_state.view = "home"
+                st.rerun()
 
 
-            # ==================== PANNELLO 4: CASSA ====================
-
-st.markdown("<div class='panel'>", unsafe_allow_html=True)
-st.markdown(f"<h3 class='goldcell'>📊 Fondo Speculazioni Sportive 📊 </h3>", unsafe_allow_html=True)
-
-        # Grafico cassa (segmenti colorati + emoji centrali con halo per 💩)
-try:
-    if not df_seg.empty and not df_cassa.empty:
-        col_domain = ["GOLD","GREEN","ORANGE","RED","BROWN"]
-        col_range  = [ GOLD,   "#16c60c", ORANGE, "#ff3b3b", BROWN ]
-
-        # Trova l’ultima giornata “vera” dai movimenti (no ricariche intermedie)
-        if not df_mov.empty:
-            last_day = int(df_mov["Giornata"].str.extract(r'(\d+)').dropna().astype(int).max())
-        else:
-            last_day = 1
-
-                # ====== asse X: tick esatti con etichette umane (G/VG/RG) ======
-        _ticks_df = (
-            df_cassa.sort_values("x")[["x", "Giornata"]]
-            .drop_duplicates(subset=["x"])
-            .round(2)
-        )
-        _tick_vals = _ticks_df["x"].tolist()
-        _map = {f"{v:.2f}": str(lbl) for v, lbl in _ticks_df.to_records(index=False)}
-
-        # labelExpr: traduce i valori numerici nascosti in etichette G… / RG… / VG…
-        _label_expr = "(" + "{%s}" % ", ".join([f"'{k}': '{v}'" for k, v in _map.items()]) + ")" + "[format(datum.value, '.2f')]"
-
-        # Linea principale
-        line = alt.Chart(df_seg).mark_line(size=4).encode(
-            x=alt.X(
-                "x:Q",
-                title="Giornata",
-                axis=alt.Axis(
-                    values=_tick_vals,
-                    labelExpr=_label_expr,
-                    labelFlush=False,
-                    labelOverlap=True
-                ),
-                scale=alt.Scale(domain=(0, last_day + 0.5))
-            ),
-            y=alt.Y("y:Q", title="Cassa €"),
-            color=alt.Color("Colore:N", scale=alt.Scale(domain=col_domain, range=col_range), legend=None),
-            detail="seg_id:N",
-            order="ord:O"
-        ).properties(height=340)
-
-        chart = line
-
-
-        # ✅ Linea orizzontale dello zero
-        zero_line = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(
-            color="#8B4513",
-            strokeWidth=6
-        ).encode(y="y:Q")
-        chart += zero_line
-
-        # ✅ Marker + etichette sull’ultimo punto della cassa
-        if not df_cassa.empty:
-            last_pt = df_cassa.iloc[[-1]]
-
-            # Rombo dorato
-            chart += alt.Chart(last_pt).mark_point(
-                size=160,
-                color="gold",
-                shape="diamond"
-            ).encode(x="x:Q", y="y:Q")
-
-            # Etichetta con valore portafoglio
-            chart += alt.Chart(last_pt).mark_text(
-                align="left",
-                dx=10,
-                dy=-10,
-                fontSize=16,
-                fontWeight="bold",
-                color="gold"
-            ).encode(
-                x="x:Q",
-                y="y:Q",
-                text=alt.Text("y:Q", format=".2f")
-            )
-
-        # ✅ Emoji centrali sui segmenti (faccine in discesa; soldi/ricariche in salita)
-        all_emojis = []
-        for seg_id, rows in df_seg.groupby("seg_id"):
-            if len(rows) == 2:
-                p1, p2 = rows.to_dict("records")
-                mid_x = (p1["x"] + p2["x"]) / 2
-                mid_y = (p1["y"] + p2["y"]) / 2
-                col = p2["Colore"]
-
-                emoji = None
-                if p2["y"] > p1["y"]:
-                    # 📈 Segmento in salita → SEMPRE icone positive
-                    if col == "GREEN":
-                        emoji = "💵"   # banconote (verde)
-                    elif col == "GOLD":
-                        emoji = "🪙"   # moneta d'oro (oro)
-                    elif col == "ORANGE":
-                        emoji = "💶"   # banconota singola (arancio)
-                    elif col == "BROWN":
-                        emoji = "💸"    # ricarica (banconote che volano)
-                    elif col == "RED":
-                        emoji = "👍"   # incoraggiamento (rosso ma salita)
-                elif p2["y"] < p1["y"]:
-                    # 📉 Segmento in discesa → solo faccine (in base al colore del segmento)
-                    if col == "GOLD":
-                        emoji = "🤩"   # molto sorridente (sei in oro anche se scendi)
-                    elif col == "GREEN":
-                        emoji = "🙂"   # sorridente (sei in verde anche se scendi)
-                    elif col == "ORANGE":
-                        emoji = "😟"   # preoccupata
-                    elif col == "RED":
-                        emoji = "😱"   # disperata
-
-                if emoji:
-                    all_emojis.append({"x": mid_x, "y": mid_y, "Emoji": emoji})
-
-        df_emojis = pd.DataFrame(all_emojis)
-        if not df_emojis.empty:
-            faces = alt.Chart(df_emojis).mark_text(
-                fontSize=30,   # icone grandi e uniformi
-                dy=-30         # leggermente staccate dal segmento
-            ).encode(
-                x="x:Q",
-                y="y:Q",
-                text="Emoji:N"
-            )
-            chart += faces
-
-        # Modalità di visualizzazione del grafico
-        mode = st.radio(
-            "Visualizzazione grafico",
-            ["Compatto con scroll", "Tutte le giornate compresse", "Schermo intero automatico"],
-            index=0   # 0 = default → Compat­to con scroll
-        )
-
-        if mode == "Compatto con scroll":
-            # Grafico largo con scroll orizzontale SOLO su questo riquadro
-            chart_scroll = chart.properties(width=3000, height=340)
-            st.markdown(
-                """
-                <div style="overflow-x:auto; border:2px solid #444; border-radius:10px; padding:6px;">
-                """,
-                unsafe_allow_html=True
-            )
-            st.altair_chart(chart_scroll, use_container_width=False)
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        elif mode == "Tutte le giornate compresse":
-            # Grafico compresso: tutte le giornate in un unico colpo d’occhio
-            chart = chart.properties(height=340)
-            st.altair_chart(chart, use_container_width=True)
-
-        elif mode == "Schermo intero automatico":
-            # Grafico adattato automaticamente alla larghezza del browser
-            chart_full = chart.properties(height=400)
-            st.altair_chart(chart_full, use_container_width=True)
-
-
-        # Suggerimento utile per chi guarda da smartphone
-        st.caption("💡 Suggerimento: su smartphone la modalità 'Compatto con scroll' è più leggibile.")
-        
-except Exception:
-    pass
-
-if not df_mov.empty:
-    giornata_corrente = df_mov["Giornata"].iloc[-1]
-    cassa_attuale = df_mov["Cassa dopo €"].iloc[-1]
-    st.markdown(f"<h4 style='color:gold'>💰 Cassa attuale {giornata_corrente}: <span style='font-size:1.5em;'>{cassa_attuale}</span></h4>", unsafe_allow_html=True)
-    st.markdown("#### 📒 Movimenti cassa")
-    st.dataframe(df_mov, hide_index=True, use_container_width=True)
-else:
-    st.markdown(f"<h4 style='color:gold'>💰 Cassa attuale G1: <span style='font-size:1.5em;'>{eur(CASSA_START)}</span></h4>", unsafe_allow_html=True)
-    st.markdown("#### 📒 Movimenti cassa")
-    st.caption("Nessun movimento ancora registrato.")
-st.markdown("</div>", unsafe_allow_html=True)
+        # Gestione viste (sezioni)
+        v = st.session_state.view
+        if v == "filippoide":
+            mostra_filipp()
+        elif v == "classifica":
+            mostra_classifica()
+        elif v == "giornate":
+            mostra_giornate()
+        elif v == "legenda":
+            mostra_legenda()
+        elif v == "polli_volpi":
+            mostra_polli_volpi()
+        elif v == "movimenti":
+            mostra_movimenti()
