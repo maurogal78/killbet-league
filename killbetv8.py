@@ -32,7 +32,7 @@ if "ricariche" not in st.session_state:
 if "fino_a" not in st.session_state:
     st.session_state["fino_a"] = 1
 
-st.set_page_config(page_title="KillBet League 2025-2026", layout="wide")
+st.set_page_config(page_title="🐔💰 KillBet League 2025-2026 💰🦊", layout="wide")
 
 # ===== DEVICE & ORIENTATION DETECTION (versione universale e sicura) =====
 import streamlit as st
@@ -49,7 +49,7 @@ if "fino_a" in st.session_state:
 device = "unified"
 st.session_state.device = device
 
-st.caption("💡 Suggerimento: se sei su smartphone, ruota lo schermo in orizzontale per vedere meglio i grafici.")
+
 
 
 
@@ -978,30 +978,122 @@ def mostra_giornate():
                 f"</div>"
             )
 
-                            # --- Corpo card finale ---
-                            
-        card_body = f"{row('1')}{row('2')}{rip_html}"
-        return f"<div class='{base_class}'><div class='card-head'>{title}</div><div class='card-body'>{card_body}</div></div>"
 
+            # --- Corpo card finale ---
+                    
+                    
+            card_body = f"{row('1')}{row('2')}{rip_html}"
+            return (
+                f"<div class='{base_class}'>"
+                f"<div class='card-head'>{title}</div>"
+                f"<div class='card-body'>{card_body}</div>"
+                f"</div>"
+            )
+
+    # --- Funzione di supporto per ottenere il sotto-DataFrame della giornata ---
     def subdf_for_g(g):
-        sub=df_tab[df_tab["giornata"]==g]
+        sub = df_tab[df_tab["giornata"] == g]
         if sub.empty:
-            f=FIXTURES[g-1]
-            rows=[{"giornata":g,"partita":"1","CASA":f["CASA1"],"OSPITE":f["OSP1"],"Q_CASA":None,"Q_OSP":None,"E_CASA":None,"E_OSP":None},
-                {"giornata":g,"partita":"2","CASA":f["CASA2"],"OSPITE":f["OSP2"],"Q_CASA":None,"Q_OSP":None,"E_CASA":None,"E_OSP":None},
-                {"giornata":g,"partita":"RIP","CASA":f["RIP"],"OSPITE":"","Q_CASA":None,"Q_OSP":None,"E_CASA":None,"E_OSP":None}]
+            f = FIXTURES[g - 1]
+            rows = [
+                {"giornata": g, "partita": "1", "CASA": f["CASA1"], "OSPITE": f["OSP1"],
+                "Q_CASA": None, "Q_OSP": None, "E_CASA": None, "E_OSP": None},
+                {"giornata": g, "partita": "2", "CASA": f["CASA2"], "OSPITE": f["OSP2"],
+                "Q_CASA": None, "Q_OSP": None, "E_CASA": None, "E_OSP": None},
+                {"giornata": g, "partita": "RIP", "CASA": f["RIP"], "OSPITE": "",
+                "Q_CASA": None, "Q_OSP": None, "E_CASA": None, "E_OSP": None}
+            ]
             return pd.DataFrame(rows)
         return sub
 
-    CARDS_PER_ROW=4
-    for start in range(1, NUM_GIORNATE+1, CARDS_PER_ROW):
-        cols=st.columns(CARDS_PER_ROW)
-        for i,col in enumerate(cols):
-            g=start+i
-            if g>NUM_GIORNATE: break
-            with col: st.markdown(giornata_card_html(g, subdf_for_g(g)), unsafe_allow_html=True)
-            
+
+    # =====================================================
+    # 📅 Aggiunte interfaccia "Giornate" (scroll e menu)
+    # =====================================================
+
+    import streamlit as st
+    from streamlit_javascript import st_javascript
+
+    # --- 1️⃣ Recupera l'ultima giornata compilata ---
+    ultima_giornata = st.session_state.get("fino_a", 1)
+
+    # --- 2️⃣ Menu a tendina per scegliere la giornata ---
+    giornate_disponibili = list(range(1, ultima_giornata + 1))
+    if len(giornate_disponibili) > 1:
+        st.selectbox(
+            "📆 Seleziona la giornata da visualizzare:",
+            giornate_disponibili,
+            index=giornate_disponibili.index(ultima_giornata)
+            if ultima_giornata in giornate_disponibili else 0,
+            key="giornata_corrente"
+        )
+    else:
+        st.session_state["giornata_corrente"] = ultima_giornata
+
+    # 🔹 recupero la selezione corrente
+    giornata_selezionata = st.session_state["giornata_corrente"]
+
+
+
+    # =====================================================
+    # 🔁 Scroll automatico all’ultima giornata
+    # =====================================================
+    st_javascript(
+        f"""
+        setTimeout(() => {{
+            window.scrollTo({{ top: document.body.scrollHeight, behavior: 'smooth' }});
+        }}, 800);
+        """
+    )
+
+    # =====================================================
+    # 🔼 Tasto "Torna su" (fluttuante in basso a destra)
+    # =====================================================
+    st.markdown("""
+        <style>
+        .scroll-top-btn {
+            position: fixed;
+            bottom: 35px;
+            right: 20px;
+            z-index: 9999;
+            background-color: #333;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            font-size: 18px;
+            text-align: center;
+            line-height: 36px;
+            opacity: 0.6;
+            cursor: pointer;
+            transition: opacity 0.3s ease;
+        }
+        .scroll-top-btn:hover {
+            opacity: 1.0;
+        }
+        </style>
+        <button class="scroll-top-btn"
+                onclick="window.scrollTo({top: 0, behavior: 'smooth'});">↑</button>
+    """, unsafe_allow_html=True)
+
+    # =====================================================
+    # 🚫 Fine aggiunte visive – da qui in poi codice originale
+    # =====================================================
+
+    CARDS_PER_ROW = 4
+    for start in range(1, NUM_GIORNATE + 1, CARDS_PER_ROW):
+        cols = st.columns(CARDS_PER_ROW)
+        for i, col in enumerate(cols):
+            g = start + i
+            if g > NUM_GIORNATE:
+                break
+            with col:
+                st.markdown(giornata_card_html(g, subdf_for_g(g)), unsafe_allow_html=True)
+
     st.markdown("</div>", unsafe_allow_html=True)
+
+
 
 
 
@@ -1312,7 +1404,7 @@ except ImportError:
 
         # -------------------- COSTANTI --------------------
 
-TITLE = "KILL Bet365 League 2025-2026"
+TITLE = "🐔💰 KillBet League 2025-2026 💰🦊"
 PLAYERS = ["ANGEL","GARIBALDI","CHRIS","MG78IT","FILLIP"]
 NUM_GIORNATE = 40
 # Stake di default
@@ -3069,7 +3161,24 @@ def compute_all(df, fino_a=None, ricariche=None, cashouts=None):
             # -------------------- UI --------------------
 
 st.set_page_config(page_title=TITLE, layout="wide")
-st.title(TITLE)
+
+# 🔹 Mostra il titolo solo nella home page
+if st.session_state.get("view", "home") == "home":
+    st.title(TITLE)
+
+    # 🔹 Centra e colora il titolo principale
+    st.markdown("""
+    <style>
+    h1 {
+        text-align: center !important;
+        color: #d4af37 !important;
+        font-weight: 1000 !important;
+        margin-bottom: 0.3rem !important;
+        text-shadow: 0 0 8px rgba(212,175,55,0.6);
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 
 def inject_css():
     st.markdown(f"""
@@ -3766,13 +3875,13 @@ def celebrate_cashout_quasi(g, euro):
         st.markdown(
             f"""
             <div style="position:fixed;left:0;right:0;top:70px;text-align:center;z-index:9999;">
-              <div style="color:#C0C0C0;font-weight:900;font-size:30px;text-shadow:0 0 10px #C0C0C0">
+            <div style="color:#C0C0C0;font-weight:900;font-size:30px;text-shadow:0 0 10px #C0C0C0">
                 CASH OUT — QUASI TUTTI VINCENTI
-              </div>
-              <div style="color:white;font-size:20px;">
+            </div>
+            <div style="color:white;font-size:20px;">
                 Giornata {g} — Importo:
                 <span style="font-size:24px">{eur(euro)} €</span>
-              </div>
+            </div>
             </div>
             """,
             unsafe_allow_html=True
@@ -3810,90 +3919,98 @@ def celebrate_cashout(g, euro):
             """,
             unsafe_allow_html=True
         )
- 
+
+
         # ===== HOME PAGE ELEGANTE (pulsanti colorati + back funzionante) =====
+        
 st.markdown("""
 <style>
-
-/* Pulsante Back dorato */
-.back-btn {
-    background: linear-gradient(145deg, #3a3a3a, #1a1a1a);
-    border: 2px solid gold;
-    border-radius: 12px;
-    color: gold;
-    font-weight: 900;
-    padding: 0.7rem 1rem;
-    box-shadow: 0 0 14px rgba(255,215,0,0.5);
-    width: 220px;
-    margin-bottom: 10px;
-}
-.back-btn:hover {
-    background: linear-gradient(145deg, #444, #666);
-    box-shadow: 0 0 20px rgba(255,215,0,0.8);
+/* 🔧 Rimuove ogni spazio superiore globale */
+section.main {
+    padding-top: 0 !important;
+    margin-top: -100px !important;  /* 🔹 solleva tutta la pagina */
 }
 
-.stApp { background-color: #000; }
-
-/* Titolo principale */
-h1 {
-    text-align: center;
-    color: #FFD700;
-    font-weight: 900;
-    text-shadow: 0 0 12px #ffcc33;
-    margin-bottom: 0.4rem;
-}
-.subtitle {
-    text-align: center;
-    color: #aaa;
-    font-size: 1rem;
-    margin-top: -10px;
-    margin-bottom: 1.2rem;
+/* 🔹 Streamlit container principale */
+[data-testid="stAppViewContainer"] {
+    padding-top: 0 !important;
+    margin-top: -100px !important;  /* 🔹 rimuove spazio vuoto nero */
 }
 
-/* Pulsanti colorati */
+/* 🔹 Contenitore interno dei contenuti */
+main.block-container {
+    padding-top: 0 !important;
+    margin-top: -100px !important;
+}
+
+/* 🔹 Primo blocco di contenuto */
+[data-testid="stAppViewBlockContainer"] > div:first-child {
+    margin-top: -100px !important;
+}
+
+/* 🔹 Disattiva eventuali margini nei blocchi verticali */
+[data-testid="stVerticalBlockBorderWrapper"]:first-child {
+    margin-top: -60px !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+        
+st.markdown("""
+<style>
+/* === Pulsanti Home eleganti, testo MOLTO più grande ma bottone invariato === */
 div.stButton > button {
-    border: none;
-    border-radius: 16px;
-    color: white;
-    font-weight: 800;
-    text-align: center;
-    padding: 1.2rem 0.8rem;
-    width: 100%;
-    max-width: 240px;
-    cursor: pointer;
-    font-size: 1.05rem;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-    transition: all 0.2s ease-in-out;
+    background: linear-gradient(145deg, #c7a739, #d4af37, #b48e1b) !important;
+    color: #000000 !important;
+    font-weight: 1000 !important;
+    font-size: 2.8rem !important;         /* 🔹 testo molto più grande */
+    line-height: 1.1 !important;          /* 🔹 compatta verticalmente il testo */
+    white-space: nowrap !important;  
+    text-shadow: 1px 1px 2px rgba(255,255,255,0.5);
+    border: 2px solid #8a6b00 !important;
+    border-radius: 18px !important;
+    padding: 0.5rem 0.3rem !important;    /* 🔹 meno spazio interno per non aumentare la dimensione complessiva */
+    white-space: nowrap !important;  
+    max-width: 250px !important;   
+    min-height: 80px !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    transition: all 0.25s ease-in-out;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
 }
-
-/* Colori diversi per ogni pulsante */
-button[data-name="Filippoide"] { background: linear-gradient(145deg, #3a6186, #89253e); }
-button[data-name="KillBet Arena"] { background: linear-gradient(145deg, #283E51, #485563); }
-button[data-name="Giornate"] { background: linear-gradient(145deg, #56ab2f, #a8e063); }
-button[data-name="Legenda"] { background: linear-gradient(145deg, #373B44, #4286f4); }
-button[data-name="Polli & Volpi"] { background: linear-gradient(145deg, #ff5f6d, #ffc371); }
-button[data-name="Cassa"] { background: linear-gradient(145deg, #F7971E, #FFD200); }
-
 div.stButton > button:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 0 15px gold;
+    background: linear-gradient(145deg, #e1c85a, #d4af37, #b8961f) !important;
+    box-shadow: 0 0 20px rgba(255,215,0,0.8) !important;
+    transform: translateY(-3px);
+}
+div.stButton > button:active {
+    transform: translateY(1px);
 }
 
-/* Pulsante Back */
-.back-btn {
-    background: linear-gradient(145deg, #3a3a3a, #1a1a1a);
-    border: 2px solid gold;
-    border-radius: 12px;
-    color: gold;
-    font-weight: 900;
-    padding: 0.7rem 1rem;
-    box-shadow: 0 0 14px rgba(255,215,0,0.5);
-    width: 220px;
-    margin-bottom: 10px;
+
+/* === Freccia “Torna alla Home” coerente === */
+button[kind="primary"][key="back_btn_home"] {
+    background: linear-gradient(145deg, #c7a739, #d4af37, #b48e1b) !important;
+    color: #000000 !important;
+    font-weight: 1000 !important;
+    font-size: 1.9rem !important;
+    text-shadow: 1px 1px 2px rgba(255,255,255,0.5);
+    border: 2px solid #8a6b00 !important;
+    border-radius: 16px !important;
+    box-shadow: 0 0 14px rgba(0,0,0,0.4);
+    padding: 1rem 1.2rem !important;
+    width: 220px !important;
 }
-.back-btn:hover {
-    background: linear-gradient(145deg, #444, #666);
-    box-shadow: 0 0 20px rgba(255,215,0,0.8);
+button[kind="primary"][key="back_btn_home"]:hover {
+    background: linear-gradient(145deg, #e1c85a, #d4af37, #b8961f) !important;
+    box-shadow: 0 0 26px rgba(255,215,0,0.8);
+}
+
+/* === Ingrandisce anche le emoji all’interno dei pulsanti === */
+div.stButton > button span, div.stButton > button {
+    font-size: 2.8rem !important;         /* emoji e testo più grandi */
 }
 
 </style>
@@ -3935,17 +4052,21 @@ html, body {
 if "view" not in st.session_state:
     st.session_state.view = "classifica"
 
+
 # ===== ROUTER =====
 
 device = st.session_state.get("device", "unified")
 
 if device == "unified":
     if st.session_state.view == "home":
+        # Sottotitolo più vicino al titolo, centrato e con spaziatura armoniosa
         st.markdown(
-            "<h1>⚡ KillBet League 2025-2026 ⚡</h1>"
-            "<p class='subtitle'>L'app ufficiale del torneo più goliardico dell'anno 🏆</p>",
+            "<p style='text-align:center; font-size:1.5rem; color:#d4af37; "
+            "font-weight:700; margin-top:-90px; margin-bottom:60px;'>"
+            "L'app ufficiale del torneo più goliardico dell'anno 🏆</p>",
             unsafe_allow_html=True
         )
+
 
         tiles = [
             {"icon": "📊", "label": "Filippoide", "view": "filippoide"},
@@ -3966,14 +4087,56 @@ if device == "unified":
                     if st.button(label, key=f"home_btn_{r_i}_{c_i}", use_container_width=True):
                         st.session_state.view = t["view"]
                         st.rerun()
-                        
+
+        st.markdown(
+            "<p style='text-align:center; font-size:1.05rem; color:#cccccc; "
+            "margin-top:60px;'>💡 Suggerimento: se sei su smartphone, ruota lo schermo in orizzontale per vedere meglio i grafici.</p>",
+            unsafe_allow_html=True
+        )
+
+
     else:
-        # Pulsante Back dorato centrato e funzionante con un solo click
-        col_back = st.columns([1, 2, 1])[1]
-        with col_back:
+        # 🔹 Pulsante "Torna alla Home" centrato e funzionante (senza reload)
+        # 🔹 Contenitore pulsante: più alto e centrato davvero
+        col_back = st.columns([1, 1, 1])
+        with col_back[1]:
+            st.markdown("<div style='margin-top:-120px;'></div>", unsafe_allow_html=True)  # 🔹 spinge tutto verso l’alto
             if st.button("🔙 Torna alla Home", key="back_btn_home", use_container_width=True):
                 st.session_state.view = "home"
                 st.rerun()
+
+
+        # 🔹 CSS compatto e senza barra dorata
+        st.markdown("""
+        <style>
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            border: none !important;
+            box-shadow: none !important;
+        }
+        div.stButton > button[key="back_btn_home"] {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+            margin-top: -160px !important;   /* 🔹 più alto del precedente */
+            margin-bottom: 10px !important;  /* 🔹 meno spazio sotto */
+
+            background: linear-gradient(145deg, #c7a739, #d4af37, #b48e1b) !important;
+            color: #000 !important;
+            font-weight: 1000 !important;
+            font-size: 1.6rem !important;
+            border: 2px solid #8a6b00 !important;
+            border-radius: 14px !important;
+            padding: 0.6rem 1.4rem !important;
+            width: 260px !important;
+            box-shadow: 0 0 12px rgba(0,0,0,0.45);
+            cursor: pointer;
+            text-shadow: 1px 1px 2px rgba(255,255,255,0.5);
+            transition: all 0.25s ease-in-out;
+        }
+
+
+        </style>
+        """, unsafe_allow_html=True)
 
 
         # Gestione viste (sezioni)
