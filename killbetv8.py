@@ -978,122 +978,30 @@ def mostra_giornate():
                 f"</div>"
             )
 
+                            # --- Corpo card finale ---
+                            
+        card_body = f"{row('1')}{row('2')}{rip_html}"
+        return f"<div class='{base_class}'><div class='card-head'>{title}</div><div class='card-body'>{card_body}</div></div>"
 
-            # --- Corpo card finale ---
-                    
-                    
-            card_body = f"{row('1')}{row('2')}{rip_html}"
-            return (
-                f"<div class='{base_class}'>"
-                f"<div class='card-head'>{title}</div>"
-                f"<div class='card-body'>{card_body}</div>"
-                f"</div>"
-            )
-
-    # --- Funzione di supporto per ottenere il sotto-DataFrame della giornata ---
     def subdf_for_g(g):
-        sub = df_tab[df_tab["giornata"] == g]
+        sub=df_tab[df_tab["giornata"]==g]
         if sub.empty:
-            f = FIXTURES[g - 1]
-            rows = [
-                {"giornata": g, "partita": "1", "CASA": f["CASA1"], "OSPITE": f["OSP1"],
-                "Q_CASA": None, "Q_OSP": None, "E_CASA": None, "E_OSP": None},
-                {"giornata": g, "partita": "2", "CASA": f["CASA2"], "OSPITE": f["OSP2"],
-                "Q_CASA": None, "Q_OSP": None, "E_CASA": None, "E_OSP": None},
-                {"giornata": g, "partita": "RIP", "CASA": f["RIP"], "OSPITE": "",
-                "Q_CASA": None, "Q_OSP": None, "E_CASA": None, "E_OSP": None}
-            ]
+            f=FIXTURES[g-1]
+            rows=[{"giornata":g,"partita":"1","CASA":f["CASA1"],"OSPITE":f["OSP1"],"Q_CASA":None,"Q_OSP":None,"E_CASA":None,"E_OSP":None},
+                {"giornata":g,"partita":"2","CASA":f["CASA2"],"OSPITE":f["OSP2"],"Q_CASA":None,"Q_OSP":None,"E_CASA":None,"E_OSP":None},
+                {"giornata":g,"partita":"RIP","CASA":f["RIP"],"OSPITE":"","Q_CASA":None,"Q_OSP":None,"E_CASA":None,"E_OSP":None}]
             return pd.DataFrame(rows)
         return sub
 
-
-    # =====================================================
-    # 📅 Aggiunte interfaccia "Giornate" (scroll e menu)
-    # =====================================================
-
-    import streamlit as st
-    from streamlit_javascript import st_javascript
-
-    # --- 1️⃣ Recupera l'ultima giornata compilata ---
-    ultima_giornata = st.session_state.get("fino_a", 1)
-
-    # --- 2️⃣ Menu a tendina per scegliere la giornata ---
-    giornate_disponibili = list(range(1, ultima_giornata + 1))
-    if len(giornate_disponibili) > 1:
-        st.selectbox(
-            "📆 Seleziona la giornata da visualizzare:",
-            giornate_disponibili,
-            index=giornate_disponibili.index(ultima_giornata)
-            if ultima_giornata in giornate_disponibili else 0,
-            key="giornata_corrente"
-        )
-    else:
-        st.session_state["giornata_corrente"] = ultima_giornata
-
-    # 🔹 recupero la selezione corrente
-    giornata_selezionata = st.session_state["giornata_corrente"]
-
-
-
-    # =====================================================
-    # 🔁 Scroll automatico all’ultima giornata
-    # =====================================================
-    st_javascript(
-        f"""
-        setTimeout(() => {{
-            window.scrollTo({{ top: document.body.scrollHeight, behavior: 'smooth' }});
-        }}, 800);
-        """
-    )
-
-    # =====================================================
-    # 🔼 Tasto "Torna su" (fluttuante in basso a destra)
-    # =====================================================
-    st.markdown("""
-        <style>
-        .scroll-top-btn {
-            position: fixed;
-            bottom: 35px;
-            right: 20px;
-            z-index: 9999;
-            background-color: #333;
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 36px;
-            height: 36px;
-            font-size: 18px;
-            text-align: center;
-            line-height: 36px;
-            opacity: 0.6;
-            cursor: pointer;
-            transition: opacity 0.3s ease;
-        }
-        .scroll-top-btn:hover {
-            opacity: 1.0;
-        }
-        </style>
-        <button class="scroll-top-btn"
-                onclick="window.scrollTo({top: 0, behavior: 'smooth'});">↑</button>
-    """, unsafe_allow_html=True)
-
-    # =====================================================
-    # 🚫 Fine aggiunte visive – da qui in poi codice originale
-    # =====================================================
-
-    CARDS_PER_ROW = 4
-    for start in range(1, NUM_GIORNATE + 1, CARDS_PER_ROW):
-        cols = st.columns(CARDS_PER_ROW)
-        for i, col in enumerate(cols):
-            g = start + i
-            if g > NUM_GIORNATE:
-                break
-            with col:
-                st.markdown(giornata_card_html(g, subdf_for_g(g)), unsafe_allow_html=True)
-
+    CARDS_PER_ROW=4
+    for start in range(1, NUM_GIORNATE+1, CARDS_PER_ROW):
+        cols=st.columns(CARDS_PER_ROW)
+        for i,col in enumerate(cols):
+            g=start+i
+            if g>NUM_GIORNATE: break
+            with col: st.markdown(giornata_card_html(g, subdf_for_g(g)), unsafe_allow_html=True)
+            
     st.markdown("</div>", unsafe_allow_html=True)
-
-
 
 
 
